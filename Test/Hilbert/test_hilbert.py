@@ -88,6 +88,11 @@ hilberts["Doubled Hilbert"] = nk.hilbert.DoubledHilbert(
     )
 )
 
+#  Joint Hilbert
+hilberts["Purified Hilbert"] = nk.hilbert.PurifiedHilbert(
+    Spin(s=0.5, graph=nk.graph.Hypercube(length=5, n_dim=1)), 3
+)
+
 
 #
 # Tests

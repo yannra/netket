@@ -5,3 +5,5 @@ from .spin import Spin
 from .boson import Boson
 from .qubit import Qubit
 from .hilbert_index import HilbertIndex
+
+from .joint_hilbert import JointHilbert, PurifiedHilbert
