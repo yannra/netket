@@ -177,7 +177,7 @@ class BoseHubbard(AbstractOperator):
 
         return _np.copy(x_prime[:odiag_ind]), _np.copy(mels[:odiag_ind])
 
-    def get_conn_flattened(self, x, sections):
+    def _get_conn_flattened(self, x, sections, pad):
         r"""Finds the connected elements of the Operator. Starting
         from a given quantum number x, it finds all other quantum numbers x' such
         that the matrix element :math:`O(x,x')` is different from zero. In general there
@@ -198,6 +198,9 @@ class BoseHubbard(AbstractOperator):
             array: An array containing the matrix elements :math:`O(x,x')` associated to each x'.
 
         """
+        if pad is True:
+            raise NotImplementedError("Pad=True not implemented for Bose Hubbard")
+
         return self._flattened_kernel(
             x,
             sections,

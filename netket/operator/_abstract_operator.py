@@ -64,8 +64,7 @@ class AbstractOperator(abc.ABC):
 
         return x_primes_r, mels_r
 
-    @abc.abstractmethod
-    def get_conn_flattened(self, x, sections):
+    def get_conn_flattened(self, x, sections=None, pad=False):
         r"""Finds the connected elements of the Operator. Starting
         from a given quantum number x, it finds all other quantum numbers x' such
         that the matrix element :math:`O(x,x')` is different from zero. In general there
@@ -79,12 +78,21 @@ class AbstractOperator(abc.ABC):
                         the batch of quantum numbers x.
             sections (array): An array of sections for the flattened x'.
                         See numpy.split for the meaning of sections.
+            pad (bool): Whether to use zero-valued matrix elements in order to
+                        return all equal sections. (default=False)
 
         Returns:
             matrix: The connected states x', flattened together in a single matrix.
             array: An array containing the matrix elements :math:`O(x,x')` associated to each x'.
 
         """
+        if sections is None:
+            sections = np.empty(x.shape[0], dtype=_np.int32)
+
+        return self._get_conn_flattened(x, sections, pad)
+
+    @abc.abstractmethod
+    def _get_conn_flattened(self, x, sections, pad):
         return NotImplementedError
 
     def n_conn(self, x, out=None):

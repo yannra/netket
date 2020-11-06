@@ -115,18 +115,25 @@ class LocalLiouvillian(AbstractOperator):
 
         return _np.copy(self._xprime[0:i, :]), _np.copy(self._mels[0:i])
 
+    def _get_conn_flattened(self, x, sections, pad):
+        # Separate row and column inputs
+        N = x.shape[1] // 2
+        xr, xc = x[:, 0:N], x[:, N : 2 * N]
+
+        return self._get_conn_flattened_(xr, xc, sections, pad, merge_output=True)
+
     # pad option pads all sections to have the same (biggest) size.
     # to avoid using the biggest possible size, we dynamically check what is
     # the biggest size for the current size...
     # TODO: investigate if this is worthless
-    def get_conn_flattened(self, x, sections, pad=False):
-        batch_size = x.shape[0]
-        N = x.shape[1] // 2
+    def _get_conn_flattened_(self, xr, xc, sections, pad, merge_output):
+
+        assert xr.shape == xc.shape
+
+        batch_size = xr.shape[0]
+        N = xr.shape[1]
         n_jops = len(self.jump_ops)
         assert sections.shape[0] == batch_size
-
-        # Separate row and column inputs
-        xr, xc = x[:, 0:N], x[:, N : 2 * N]
 
         # Compute all flattened connections of each term
         sections_r = _np.empty(batch_size, dtype=_np.int64)
@@ -195,8 +202,9 @@ class LocalLiouvillian(AbstractOperator):
         self._xprime_f[:] = 0
         self._mels_f[:] = 0
 
-        return self._get_conn_flattened_kernel(
-            self._xprime_f,
+        self._get_conn_flattened_kernel(
+            self._xprime_f[:, 0:N],
+            self._xprime_f[:, N : 2 * N],
             self._mels_f,
             sections,
             xr,
@@ -219,10 +227,21 @@ class LocalLiouvillian(AbstractOperator):
             pad,
         )
 
+        off = sections[-1]
+        if merge_output:
+            return _np.copy(self._xprime_f[0:off, :]), _np.copy(self._mels_f[0:off])
+        else:
+            return (
+                _np.copy(self._xprime_f[0:off, 0:N]),
+                _np.copy(self._xprime_f[0:off, N : 2 * N]),
+                _np.copy(self._mels_f[0:off]),
+            )
+
     @staticmethod
     @jit(nopython=True)
     def _get_conn_flattened_kernel(
-        xs,
+        xs_r,
+        xs_c,
         mels,
         sections,
         xr,
@@ -257,16 +276,16 @@ class LocalLiouvillian(AbstractOperator):
             off_i = off
             n_hr_f = sections_r[i]
             n_hr = n_hr_f - n_hr_i
-            xs[off : off + n_hr, 0:N] = xr_prime[n_hr_i:n_hr_f, :]
-            xs[off : off + n_hr, N : 2 * N] = xc[i, :]
+            xs_r[off : off + n_hr, :] = xr_prime[n_hr_i:n_hr_f, :]
+            xs_c[off : off + n_hr, :] = xc[i, :]
             mels[off : off + n_hr] = 1j * mels_r[n_hr_i:n_hr_f]
             off += n_hr
             n_hr_i = n_hr_f
 
             n_hc_f = sections_c[i]
             n_hc = n_hc_f - n_hc_i
-            xs[off : off + n_hc, N : 2 * N] = xc_prime[n_hc_i:n_hc_f, :]
-            xs[off : off + n_hc, 0:N] = xr[i, :]
+            xs_r[off : off + n_hc, :] = xr[i, :]
+            xs_c[off : off + n_hc, :] = xc_prime[n_hc_i:n_hc_f, :]
             mels[off : off + n_hc] = -1j * mels_c[n_hc_i:n_hc_f]
             off += n_hc
             n_hc_i = n_hc_f
@@ -283,8 +302,8 @@ class LocalLiouvillian(AbstractOperator):
                 n_Lc = n_Lc_f - n_Lc_is[j]
                 # start filling batches
                 for r in range(n_Lr):
-                    xs[off : off + n_Lc, 0:N] = L_xrp[n_Lr_i + r, :]
-                    xs[off : off + n_Lc, N : 2 * N] = L_xcp[n_Lc_i:n_Lc_f, :]
+                    xs_r[off : off + n_Lc, :] = L_xrp[n_Lr_i + r, :]
+                    xs_c[off : off + n_Lc, :] = L_xcp[n_Lc_i:n_Lc_f, :]
                     mels[off : off + n_Lc] = (
                         _np.conj(L_mel_r[n_Lr_i + r]) * L_mel_c[n_Lc_i:n_Lc_f]
                     )
@@ -300,7 +319,8 @@ class LocalLiouvillian(AbstractOperator):
 
             sections[i] = off
 
-        return _np.copy(xs[0:off, :]), _np.copy(mels[0:off])
+
+#        return _np.copy(xs[0:off, :]), _np.copy(mels[0:off])
 
     def to_linear_operator(
         self, *, sparse: bool = True, append_trace: bool = False
