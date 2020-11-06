@@ -481,39 +481,7 @@ class LocalOperator(AbstractOperator):
             constant=_np.conjugate(self._constant),
         )
 
-    def get_conn(self, x):
-        r"""Finds the connected elements of the Operator. Starting
-        from a given quantum number x, it finds all other quantum numbers x' such
-        that the matrix element :math:`O(x,x')` is different from zero. In general there
-        will be several different connected states x' satisfying this
-        condition, and they are denoted here :math:`x'(k)`, for :math:`k=0,1...N_{\mathrm{connected}}`.
-
-        This is a batched version, where x is a matrix of shape (batch_size,hilbert.size).
-
-        Args:
-            x (array): An array of shape (hilbert.size) containing the quantum numbers x.
-
-        Returns:
-            matrix: The connected states x' of shape (N_connected,hilbert.size)
-            array: An array containing the matrix elements :math:`O(x,x')` associated to each x'.
-
-        """
-
-        return self._get_conn_flattened_kernel(
-            x.reshape((1, -1)),
-            _np.ones(1),
-            self._local_states,
-            self._basis,
-            self._constant,
-            self._diag_mels,
-            self._n_conns,
-            self._mels,
-            self._x_prime,
-            self._acting_on,
-            self._acting_size,
-        )
-
-    def get_conn_flattened(self, x, sections, pad=False):
+    def _get_conn_flattened(self, x, sections, pad):
         r"""Finds the connected elements of the Operator. Starting
         from a given quantum number x, it finds all other quantum numbers x' such
         that the matrix element :math:`O(x,x')` is different from zero. In general there
