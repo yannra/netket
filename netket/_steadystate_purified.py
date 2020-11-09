@@ -154,11 +154,21 @@ class SteadyStatePure(AbstractVariationalDriver):
         # Perform update
         if self._sr:
             # When using the SR (Natural gradient) we need to have the full jacobian
-            self._grads, self._jac = self._machine.vector_jacobian_prod(
-                samples_r, eloc_r / self._n_samples, self._grads, return_jacobian=True
+            self._grads_σ_a, self._jac_σ_a = self._machine.vector_jacobian_prod(
+                self._σ_a, eloc_r / self._n_samples, self._grads, return_jacobian=True
             )
 
-            self._grads = tree_map(_sum_inplace, self._grads)
+            self._grads_η_b, self._jac_η_b = self._machine.vector_jacobian_prod(
+                self._η_b, eloc_r / self._n_samples, self._grads, return_jacobian=True
+            )
+
+            self._grads = trees2_map(
+                lambda x, y: _sum_inplace(x + y), self._grads_σ_a, self._grads_η_b
+            )
+
+            self._jac = trees2_map(
+                lambda x, y: x + y.conj(), self._jac_σ_a, self._jac_η_b
+            )
 
             self._dp = self._sr.compute_update(self._jac, self._grads, self._dp)
 
