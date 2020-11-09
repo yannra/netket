@@ -143,23 +143,21 @@ class SteadyStatePure(AbstractVariationalDriver):
         self._η_b = self._samples_r[self._samples_r.shape[0] // 2 :, :]
 
         # Compute the local energy estimator and average Energy
-        eloc, self._loss_stats = self._get_mc_superop_stats(self._ham)
+        lloc, self._loss_stats = self._get_mc_superop_stats(self._ham)
 
         # Center the local energy
-        eloc -= _mean(eloc)
-
-        samples_r = self._samples.reshape((-1, self._samples.shape[-1]))
-        eloc_r = eloc.reshape(-1, 1)
+        lloc -= _mean(lloc)
+        lloc_r = lloc.reshape(-1, 1)
 
         # Perform update
         if self._sr:
             # When using the SR (Natural gradient) we need to have the full jacobian
             self._grads_σ_a, self._jac_σ_a = self._machine.vector_jacobian_prod(
-                self._σ_a, eloc_r / self._n_samples, self._grads, return_jacobian=True
+                self._σ_a, lloc_r / self._n_samples, self._grads, return_jacobian=True
             )
 
             self._grads_η_b, self._jac_η_b = self._machine.vector_jacobian_prod(
-                self._η_b, eloc_r / self._n_samples, self._grads, return_jacobian=True
+                self._η_b, lloc_r / self._n_samples, self._grads, return_jacobian=True
             )
 
             self._grads = trees2_map(
@@ -175,11 +173,11 @@ class SteadyStatePure(AbstractVariationalDriver):
         else:
             # Computing updates using the simple gradient
             self._grads_σ_a = self._machine.vector_jacobian_prod(
-                self._σ_a, eloc_r / self._n_samples, self._grads
+                self._σ_a, lloc_r / self._n_samples, self._grads
             )
 
             self._grads_η_b = self._machine.vector_jacobian_prod(
-                self._η_b, eloc_r / self._n_samples, self._grads
+                self._η_b, lloc_r / self._n_samples, self._grads
             )
 
             self._grads = trees2_map(
