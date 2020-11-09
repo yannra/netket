@@ -30,6 +30,8 @@ from netket._vmc import Vmc
 from netket._steadystate import SteadyState
 from netket.machine.density_matrix import AbstractDensityMatrix
 from netket.abstract_variational_driver import AbstractVariationalDriver
+from netket.machine import PurifiedJaxMachine
+from netket._steadystate_purified import SteadyStatePure
 
 from .operator import (
     local_values as _local_values,
@@ -79,7 +81,7 @@ def _time_evo_vmc(self):
 
 
 @_time_evo.register(SteadyState)
-def _time_evo_vmc(self):
+def _time_evo_ss(self):
     self._obs_samples_valid = False
     self._sampler.reset()
     self._sampler.generate_samples(self._n_discard)
@@ -99,12 +101,56 @@ def _time_evo_vmc(self):
     return self._dp
 
 
+@_time_evo.register(SteadyStatePure)
+def _time_evo_pss(self):
+    self._sampler.reset()
+    self._sampler.generate_samples(self._n_discard)
+    self._samples = self._sampler.generate_samples(
+        self._n_samples_node, samples=self._samples
+    )
+    self._samples_r = self._samples.reshape((-1, self._samples.shape[-1]))
+    self._σ_a = self._samples_r[0 : self._samples_r.shape[0] // 2, :]
+    self._η_b = self._samples_r[self._samples_r.shape[0] // 2 :, :]
+    self._lloc, self._loss_stats = self._get_mc_superop_stats(self._ham)
+    self._loss1_stats = _statistics(self._lloc.T)
+
+    lloc = self._lloc - _mean(self._lloc)
+    lloc_r = lloc.reshape(-1, 1)
+
+    self._grads_σ_a, self._jac_σ_a = self._machine.vector_jacobian_prod(
+        self._σ_a,
+        lloc_r.conj() / self._n_samples,
+        self._grads,
+        conjugate=False,
+        return_jacobian=True,
+    )
+
+    self._grads_η_b, self._jac_η_b = self._machine.vector_jacobian_prod(
+        self._η_b,
+        lloc_r / self._n_samples,
+        self._grads,
+        conjugate=False,
+        return_jacobian=True,
+    )
+
+    self._grads = trees2_map(
+        lambda x, y: _sum_inplace(x.conj() + y), self._grads_σ_a, self._grads_η_b
+    )
+
+    self._jac = trees2_map(lambda x, y: x + y.conj(), self._jac_σ_a, self._jac_η_b)
+
+    self._dp = self._sr.compute_update(self._jac, self._grads, self._dp)
+    return self._dp
+
+
 def create_timevo(op, sampler, *args, julia=False, **kwargs):
     machine = sampler._machine
-    if not isinstance(machine, AbstractDensityMatrix):
-        driver = Vmc(op, sampler, *args, optimizer=None, **kwargs)
-    else:
+    if isinstance(machine, AbstractDensityMatrix):
         driver = SteadyState(op, sampler, *args, optimizer=None, **kwargs)
+    elif isinstance(machine, PurifiedJaxMachine):
+        driver = SteadyStatePure(op, sampler, *args, optimizer=None, **kwargs)
+    else:
+        driver = Vmc(op, sampler, *args, optimizer=None, **kwargs)
 
     flatten = machine.numpy_flatten
     unflatten = lambda w: machine.numpy_unflatten(w, machine.parameters)
@@ -142,7 +188,12 @@ class TimeEvolution(AbstractVariationalDriver):
     """
 
     def __init__(
-        self, operator, sampler, sr, *args, **kwargs,
+        self,
+        operator,
+        sampler,
+        sr,
+        *args,
+        **kwargs,
     ):
         driver, fun = create_timevo(operator, sampler, *args, sr=sr, **kwargs)
 
