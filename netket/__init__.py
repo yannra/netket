@@ -55,6 +55,7 @@ from . import (
 from ._vmc import Vmc
 from ._qsr import Qsr
 from ._steadystate import SteadyState
+from ._steadystate_purified import SteadyStatePure
 
 from .vmc_common import (
     tree_map as _tree_map,

@@ -8,6 +8,7 @@ from ..utils import jax_available, torch_available
 if jax_available:
     from .jax import Jax, JaxRbm, MPSPeriodic, JaxRbmSpinPhase
     from .jax import DenseReal, SumLayer, LogCoshLayer
+    from .purified import PurifiedJaxMachine
 
 if torch_available:
     from .torch import Torch, TorchLogCosh, TorchView
