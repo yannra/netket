@@ -163,6 +163,9 @@ def steady_state(lindblad, *, sparse=None, method="ed", rho0=None, **kwargs):
     M = lindblad.hilbert.physical.n_states
 
     if method == "ed":
+        if sparse is None:
+            sparse = False
+
         if not sparse:
             from numpy.linalg import eigh
             from warnings import warn
