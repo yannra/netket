@@ -4,6 +4,7 @@ from netket.vmc_common import tree_map as _tree_map
 import numpy as _np
 
 import tarfile
+import time
 from io import BytesIO
 
 
@@ -76,6 +77,7 @@ class JsonLog:
         save_params_every=50,
         write_every=50,
         tar_parameters=False,
+        autoflush_cost=0.005,
     ):
         # Shorthands for mode
         if mode == "w":
@@ -121,6 +123,10 @@ class JsonLog:
         self._files_open = [output_prefix + ".log", output_prefix + ".wf"]
         self._tar_params = False
 
+        self._autoflush_cost = 0.005
+        self._last_flush_time = 0
+        self._last_flush_runtime = 0.0
+
         if tar_parameters:
             if mode == "write":
                 mode = "w"
@@ -146,6 +152,9 @@ class JsonLog:
 
         self._json_out["Output"].append(item)
 
+        elapsed_time = time.time() - self._last_flush_time
+        flush_anyway = self._last_flush_runtime / elapsed_time < self._autoflush_cost
+
         if self._tar_params and machine is not None:
             if not self._tar_file_created:
                 self._create_tar_file()
@@ -157,6 +166,7 @@ class JsonLog:
         if (
             self._steps_notflushed_write % self._write_every == 0
             or step == self._old_step - 1
+            or flush_anyway
         ):
             self._flush_log()
         if (
@@ -170,10 +180,13 @@ class JsonLog:
         self._steps_notflushed_pars += 1
 
     def _flush_log(self):
+        self._last_flush_time = time.time()
         with open(self._prefix + ".log", "w") as outfile:
             log_data = _tree_map(_to_json, self._json_out)
             _json.dump(log_data, outfile)
             self._steps_notflushed_write = 0
+
+        self._last_flush_runtime = time.time() - self._last_flush_time
 
     def _flush_params(self, machine):
         machine.save(self._prefix + ".wf")
