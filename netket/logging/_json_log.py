@@ -1,6 +1,7 @@
 import json as _json
 from os import path as _path
 from netket.vmc_common import tree_map as _tree_map
+import numpy as _np
 
 import tarfile
 from io import BytesIO
@@ -11,9 +12,14 @@ def _exists_json(prefix):
 
 
 def _to_json(ob):
-    to_json = getattr(ob, "to_json", None)
-    if to_json is not None:
+    if hasattr(ob, "to_json"):
         return ob.to_json()
+    # array-like (for example CUDA or Jax arrays) satisfy the __array__
+    # protocol.
+    # https://numpy.org/doc/stable/reference/generated/numpy.array.html
+    elif hasattr(ob, "__array__"):
+        # return _np.array(ob)
+        return None
     else:
         return ob
 
