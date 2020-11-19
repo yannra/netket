@@ -2,6 +2,7 @@ import json as _json
 from os import path as _path
 from netket.vmc_common import tree_map as _tree_map
 from netket.stats.mc_stats import Stats
+import numpy as _np
 
 from tensorboardX import SummaryWriter
 
@@ -17,26 +18,39 @@ def tree_log(tree, root, data):
         tmp = [
             tree_log(val, root + "/{}".format(i), data) for (i, val) in enumerate(tree)
         ]
-        return data
     elif isinstance(tree, list) and hasattr(tree, "_fields"):
         tmp = [
             tree_log(getattr(tree, key), root + "/{}".format(key), data)
             for key in tree._fields
         ]
-        return data
     elif isinstance(tree, tuple):
-        tmp = tuple(
-            tree_log(val, root + "/{}".format(i), data) for (i, val) in enumerate(tree)
-        )
-        return data
+        if hasattr(tree, "_fields"):
+            tmp = tuple(
+                tree_log(getattr(tree, key), root + "/{}".format(key), data)
+                for key in tree._fields
+            )
+        else:
+            tmp = tuple(
+                tree_log(val, root + "/{}".format(i), data)
+                for (i, val) in enumerate(tree)
+            )
     elif isinstance(tree, dict):
         return {
             key: tree_log(value, root + "/{}".format(key), data)
             for key, value in tree.items()
         }
+    elif isinstance(tree, Stats):
+        tree_log(tree.mean, root, data)
     else:
-        data.append((root, tree))
-        return data
+        if isinstance(tree, complex) or (
+            hasattr(tree, "dtype") and tree.dtype == complex
+        ):
+            data.append((root + "/re", tree.real))
+            data.append((root + "/im", tree.imag))
+        else:
+            data.append((root, tree))
+
+    return data
 
 
 class TBLog:
@@ -98,12 +112,11 @@ class TBLog:
         tree_log(item, "", data)
 
         for key, val in data:
-            if isinstance(val, Stats):
-                val = val.mean
-
-            if isinstance(val, complex):
-                self._writer.add_scalar(key[1:] + "/re", val.real, step)
-                self._writer.add_scalar(key[1:] + "/im", val.imag, step)
+            if hasattr(val, "ndim"):
+                if val.ndim > 0:
+                    self._writer.add_histogram(key[1:], _np.asarray(val), step)
+                else:
+                    self._writer.add_scalar(key[1:], val, step)
             else:
                 self._writer.add_scalar(key[1:], val, step)
 
