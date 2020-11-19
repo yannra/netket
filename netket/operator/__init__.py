@@ -1,4 +1,5 @@
 from ._local_values import local_values
+from ._local_trace import local_trace
 
 from ._der_local_values import der_local_values
 
