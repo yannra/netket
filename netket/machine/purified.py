@@ -33,16 +33,22 @@ class PurifiedJaxMachine(Jax):
 
         super().__init__(hilbert, *args, **kwargs)
 
-        def _ancilla_log_val(params, v, v_a):
+        def _log_val_ancilla(params, v, v_a):
             v_phys = v[:, 0 : hilbert.size_physical]
-
             x = jax.numpy.concatenate((v, v_a), axis=1)
 
             return self._forward_fn_nj(params, x).reshape(
                 x.shape[0],
             )
 
-        self._log_val_ancilla = jax.jit(_ancilla_log_val)
+        def _der_log_ancilla(params, v, v_a):
+            v_phys = v[:, 0 : hilbert.size_physical]
+            x = jax.numpy.concatenate((v, v_a), axis=1)
+
+            return self._perex_grads(self._params, x)
+
+        self._log_val_ancilla = jax.jit(_log_val_ancilla)
+        self._der_log_ancilla = jax.jit(_der_log_ancilla)
 
     def density_matrix(self, normalize=True):
         if self.hilbert.is_indexable:
