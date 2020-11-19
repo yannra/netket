@@ -111,6 +111,12 @@ def _time_evo_pss(self):
     self._samples_r = self._samples.reshape((-1, self._samples.shape[-1]))
     self._σ_a = self._samples_r[0 : self._samples_r.shape[0] // 2, :]
     self._η_b = self._samples_r[self._samples_r.shape[0] // 2 :, :]
+
+    a = self._η_b[:, 0 : self._machine.hilbert.size_physical]
+    η = self._η_b[:, self._machine.hilbert.size_physical :]
+
+    self._η_a = jax.numpy.concatenate((η, a), axis=1)
+
     self._lloc, self._loss_stats = self._get_mc_superop_stats(self._ham)
     self._loss1_stats = _statistics(self._lloc.T)
 
@@ -125,8 +131,8 @@ def _time_evo_pss(self):
         return_jacobian=True,
     )
 
-    self._grads_η_b, self._jac_η_b = self._machine.vector_jacobian_prod(
-        self._η_b,
+    self._grads_η_a, self._jac_η_a = self._machine.vector_jacobian_prod(
+        self._η_a,
         lloc_r / self._n_samples,
         self._grads,
         conjugate=False,
@@ -134,10 +140,10 @@ def _time_evo_pss(self):
     )
 
     self._grads = trees2_map(
-        lambda x, y: _sum_inplace(x.conj() + y), self._grads_σ_a, self._grads_η_b
+        lambda x, y: _sum_inplace(x.conj() + y), self._grads_σ_a, self._grads_η_a
     )
 
-    self._jac = trees2_map(lambda x, y: x + y.conj(), self._jac_σ_a, self._jac_η_b)
+    self._jac = trees2_map(lambda x, y: x + y.conj(), self._jac_σ_a, self._jac_η_a)
 
     self._dp = self._sr.compute_update(self._jac, self._grads, self._dp)
     return self._dp
