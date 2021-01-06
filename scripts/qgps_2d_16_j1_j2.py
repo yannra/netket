@@ -85,7 +85,7 @@ for x in range(N):
         for k in range(2):
             epsilon[j, x, k] = 0.95 + 0.1*np.random.rand()
 
-ma = nk.machine.QGPSPhaseSplitProdSym(hi, epsilon=epsilon, automorphisms=transl, spin_flip_sym=True)
+ma = nk.machine.QGPSPhaseSplitSumSym(hi, epsilon=epsilon, automorphisms=transl, spin_flip_sym=True)
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.04)
