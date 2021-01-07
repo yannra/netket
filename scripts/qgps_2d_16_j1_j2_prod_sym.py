@@ -8,7 +8,7 @@ J2 = float(sys.argv[2])
 
 J1 = 1.0
 
-if mpi.MPI.COMM_WORLD.Get_rank() == 1:
+if mpi.MPI.COMM_WORLD.Get_rank() == 0:
     with open("result.txt", "w") as fl:
         fl.write("N, energy (real), energy (imag), energy_error\n")
 
@@ -106,12 +106,12 @@ if mpi.MPI.COMM_WORLD.Get_rank() == 1:
         fl.write("")
 
 for it in gs.iter(2000,1):
-    if mpi.MPI.COMM_WORLD.Get_rank() == 1:
+    if mpi.MPI.COMM_WORLD.Get_rank() == 0:
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
 
-if mpi.MPI.COMM_WORLD.Get_rank() == 1:
+if mpi.MPI.COMM_WORLD.Get_rank() == 0:
     with open("result.txt", "a") as fl:
         fl.write("{}  {}  {}  {}\n".format(N, np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
 
