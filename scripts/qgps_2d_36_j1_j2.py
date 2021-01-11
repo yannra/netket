@@ -84,13 +84,13 @@ for x in range(N):
 ma = nk.machine.QGPSPhaseSplitSumSym(hi, epsilon=epsilon, automorphisms=transl, spin_flip_sym=True)
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.06)
+op = nk.optimizer.Sgd(ma, learning_rate=0.05)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma, diag_shift=0.00025)
+sr = nk.optimizer.SR(ma, diag_shift=0.0005)
 
 samples = max(4000, epsilon.size * 5)
 
