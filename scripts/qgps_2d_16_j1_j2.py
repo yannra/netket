@@ -1,14 +1,14 @@
 import numpy as np
 import netket as nk
 import sys
-import mpi4py as mpi
+import mpi4py.MPI as mpi
 
 N = int(sys.argv[1])
 J2 = float(sys.argv[2])
 
 J1 = 1.0
 
-if mpi.MPI.COMM_WORLD.Get_rank() == 0:
+if mpi.COMM_WORLD.Get_rank() == 0:
     with open("result.txt", "w") as fl:
         fl.write("N, energy (real), energy (imag), energy_error\n")
 
@@ -88,30 +88,30 @@ for x in range(N):
 ma = nk.machine.QGPSPhaseSplitSumSym(hi, epsilon=epsilon, automorphisms=transl, spin_flip_sym=True)
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.04)
+op = nk.optimizer.Sgd(ma, learning_rate=0.05)
 
 # Sampler
-sa = nk.sampler.MetropolisExchange(machine=ma,graph=g)
+sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma, diag_shift=0.0005)
+sr = nk.optimizer.SR(ma, diag_shift=0.00001)
 
 samples = max(4000, epsilon.size * 5)
 
 # Create the optimization driver
 gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr)
 
-if mpi.MPI.COMM_WORLD.Get_rank() == 1:
+if mpi.COMM_WORLD.Get_rank() == 1:
     with open("out.txt", "w") as fl:
         fl.write("")
 
 for it in gs.iter(2000,1):
-    if mpi.MPI.COMM_WORLD.Get_rank() == 0:
+    if mpi.COMM_WORLD.Get_rank() == 0:
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
 
-if mpi.MPI.COMM_WORLD.Get_rank() == 0:
+if mpi.COMM_WORLD.Get_rank() == 0:
     with open("result.txt", "a") as fl:
         fl.write("{}  {}  {}  {}\n".format(N, np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
 
