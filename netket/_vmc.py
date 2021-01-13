@@ -19,7 +19,13 @@ class Vmc(AbstractVariationalDriver):
     """
 
     def __init__(
-        self, hamiltonian, sampler, optimizer, n_samples, n_discard=None, sr=None
+        self,
+        hamiltonian,
+        sampler,
+        optimizer,
+        n_samples,
+        n_discard=None,
+        sr=None,
     ):
         """
         Initializes the driver class.
@@ -149,14 +155,30 @@ class Vmc(AbstractVariationalDriver):
 
         # Perform update
         if self._sr:
-            # When using the SR (Natural gradient) we need to have the full jacobian
-            self._grads, self._jac = self._machine.vector_jacobian_prod(
-                samples_r, eloc_r / self._n_samples, self._grads, return_jacobian=True
-            )
+            if self._sr.onthefly:
 
-            self._grads = tree_map(_sum_inplace, self._grads)
+                self._grads = self._machine.vector_jacobian_prod(
+                    samples_r, eloc_r / self._n_samples, self._grads
+                )
 
-            self._dp = self._sr.compute_update(self._jac, self._grads, self._dp)
+                self._grads = tree_map(_sum_inplace, self._grads)
+
+                self._dp = self._sr.compute_update_onthefly(
+                    samples_r, self._grads, self._dp
+                )
+
+            else:
+                # When using the SR (Natural gradient) we need to have the full jacobian
+                self._grads, self._jac = self._machine.vector_jacobian_prod(
+                    samples_r,
+                    eloc_r / self._n_samples,
+                    self._grads,
+                    return_jacobian=True,
+                )
+
+                self._grads = tree_map(_sum_inplace, self._grads)
+
+                self._dp = self._sr.compute_update(self._jac, self._grads, self._dp)
 
         else:
             # Computing updates using the simple gradient
@@ -184,6 +206,12 @@ class Vmc(AbstractVariationalDriver):
         return self._loss_stats
 
     def _estimate_stats(self, obs):
+        if self._samples is None:
+            raise RuntimeError(
+                "Vmc driver needs to perform a step before .estimate() can be "
+                "called. To get VMC estimates outside of optimization, use "
+                "netket.variational.estimate_expectations instead."
+            )
         return self._get_mc_stats(obs)[1]
 
     def reset(self):
