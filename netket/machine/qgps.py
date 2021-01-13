@@ -17,8 +17,7 @@ class QGPS(AbstractMachine):
         n_bond=None,
         automorphisms=None,
         spin_flip_sym=False,
-        dtype=complex,
-        outdtype=None
+        dtype=complex
     ):
         n = hilbert.size
 
@@ -60,7 +59,7 @@ class QGPS(AbstractMachine):
         self.value_time = 0
         self.der_time = 0
 
-        super().__init__(hilbert, dtype=dtype, outdtype=outdtype)
+        super().__init__(hilbert, dtype=dtype)
 
     @property
     def n_par(self):
@@ -281,7 +280,7 @@ class QGPSPhaseSplit(QGPS):
 
         super().__init__(hilbert, epsilon=epsilon, n_bond=n_bond_total,
                          automorphisms=automorphisms, spin_flip_sym=spin_flip_sym,
-                         dtype=float, outdtype=complex)
+                         dtype=float)
 
     def log_val(self, x, out=None):
         r"""Computes the logarithm of the wave function for a batch of visible
