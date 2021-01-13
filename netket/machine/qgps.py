@@ -45,9 +45,12 @@ class QGPS(AbstractMachine):
                     raise RuntimeError("Cannot find a valid automorphism array.")
 
             self._Smap = autom
-        
+
+        self._sym_spin_flip_sign = _np.ones(len(self._Smap), dtype=_np.int8)
         if spin_flip_sym:
             self._Smap = _np.append(self._Smap, -self._Smap, axis=0)
+            self._sym_spin_flip_sign = _np.append(self._sym_spin_flip_sign,
+                                                  -self._sym_spin_flip_sign, axis=0)
 
         if epsilon is None:
             assert(n_bond is not None)
@@ -80,7 +83,7 @@ class QGPS(AbstractMachine):
             matrix.
         """
         start = time.time()
-        val = self._log_val_kernel(x, out, self._epsilon, self._Smap)
+        val = self._log_val_kernel(x, out, self._epsilon, self._Smap, self._sym_spin_flip_sign)
         self.value_time += time.time() - start
         return val
 
@@ -97,7 +100,7 @@ class QGPS(AbstractMachine):
             `out`
         """
         start = time.time()
-        der = self._der_log_kernel(x, out, self._epsilon, self._npar, self._Smap)
+        der = self._der_log_kernel(x, out, self._epsilon, self._npar, self._Smap, self._sym_spin_flip_sign)
         self.der_time += time.time() - start
         return der
 
@@ -127,7 +130,7 @@ class QGPSSumSym(QGPS):
 
     @staticmethod
     @jit(nopython=True)
-    def _log_val_kernel(x, out, epsilon, Smap):
+    def _log_val_kernel(x, out, epsilon, Smap, symSign):
         if out is None:
             out = _np.empty(x.shape[0], dtype=_np.complex128)
 
@@ -138,7 +141,7 @@ class QGPSSumSym(QGPS):
                 for w in range(epsilon.shape[1]):
                     innerprod = _np.complex128(1.0)
                     for i in range(x.shape[1]):
-                        if _np.sign(Smap[t,i]) * x[b, _np.abs(Smap[t,i])] > 0:
+                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
                             innerprod *= epsilon[i, w, 0]
                         else:
                             innerprod *= epsilon[i, w, 1]
@@ -149,7 +152,7 @@ class QGPSSumSym(QGPS):
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_par, Smap):
+    def _der_log_kernel(x, out, epsilon, n_par, Smap, symSign):
         batch_size = x.shape[0]
 
         if out is None:
@@ -166,7 +169,7 @@ class QGPSSumSym(QGPS):
                 for w in range(epsilon.shape[1]):
                     innerargument = _np.complex128(1.0)
                     for i in range(n):
-                        if _np.sign(Smap[t,i]) * x[b, _np.abs(Smap[t,i])] > 0:
+                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
                             innerargument *= epsilon[i, w, 0]
                         else:
                             innerargument *= epsilon[i, w, 1]
@@ -176,12 +179,12 @@ class QGPSSumSym(QGPS):
                 for w in range(epsilon.shape[1]):
                     derivative = _np.complex128(1.0)
                     for i in range(n):
-                        if _np.sign(Smap[t,i]) * x[b, _np.abs(Smap[t,i])] > 0:
+                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
                             derivative *= epsilon[i, w, 0]
                         else:
                             derivative *= epsilon[i, w, 1]
                     for i in range(n):
-                        if _np.sign(Smap[t,i]) * x[b, _np.abs(Smap[t,i])] > 0:
+                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
                             out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * derivative/epsilon[i, w, 0]
                         else:
                             out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * derivative/epsilon[i, w, 1]
@@ -199,7 +202,7 @@ class QGPSProdSym(QGPS):
 
     @staticmethod
     @jit(nopython=True)
-    def _log_val_kernel(x, out, epsilon, Smap):
+    def _log_val_kernel(x, out, epsilon, Smap, symSign):
         if out is None:
             out = _np.empty(x.shape[0], dtype=_np.complex128)
 
@@ -209,7 +212,7 @@ class QGPSProdSym(QGPS):
                 for w in range(epsilon.shape[1]):
                     innerprod = _np.complex128(1.0)
                     for i in range(x.shape[1]):
-                        if _np.sign(Smap[t,i]) * x[b, _np.abs(Smap[t,i])] > 0:
+                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
                             innerprod *= epsilon[i, w, 0]
                         else:
                             innerprod *= epsilon[i, w, 1]
@@ -218,7 +221,7 @@ class QGPSProdSym(QGPS):
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_par, Smap):
+    def _der_log_kernel(x, out, epsilon, n_par, Smap, symSign):
         batch_size = x.shape[0]
 
         if out is None:
@@ -233,12 +236,12 @@ class QGPSProdSym(QGPS):
                 for w in range(epsilon.shape[1]):
                     derivative = _np.complex128(1.0)
                     for i in range(n):
-                        if _np.sign(Smap[t,i]) * x[b, _np.abs(Smap[t,i])] > 0:
+                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
                             derivative *= epsilon[i, w, 0]
                         else:
                             derivative *= epsilon[i, w, 1]
                     for i in range(n):
-                        if _np.sign(Smap[t,i]) * x[b, _np.abs(Smap[t,i])] > 0:
+                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
                             out[b, 2*epsilon.shape[1]*i + 2*w + 0] += derivative/epsilon[i, w, 0]
                         else:
                             out[b, 2*epsilon.shape[1]*i + 2*w + 1] += derivative/epsilon[i, w, 1]
@@ -281,7 +284,8 @@ class QGPSPhaseSplit(QGPS):
             matrix.
         """
         start = time.time()
-        val = self._log_val_kernel(x, out, self._epsilon, self.n_bond_amplitude, self._Smap)
+        val = self._log_val_kernel(x, out, self._epsilon, self.n_bond_amplitude, 
+                                   self._Smap, self._sym_spin_flip_sign)
         self.value_time += time.time() - start
         return val
 
@@ -299,7 +303,7 @@ class QGPSPhaseSplit(QGPS):
         """
         start = time.time()
         der = self._der_log_kernel(x, out, self._epsilon, self.n_bond_amplitude,
-                                   self._npar, self._Smap)
+                                   self._npar, self._Smap, self._sym_spin_flip_sign)
         self.der_time += time.time() - start
         return der
 
@@ -313,7 +317,7 @@ class QGPSPhaseSplitSumSym(QGPSPhaseSplit):
 
     @staticmethod
     @jit(nopython=True)
-    def _log_val_kernel(x, out, epsilon, n_bond_amplitude, Smap):
+    def _log_val_kernel(x, out, epsilon, n_bond_amplitude, symSign):
         if out is None:
             out = _np.empty(x.shape[0], dtype=_np.complex128)
 
@@ -324,7 +328,7 @@ class QGPSPhaseSplitSumSym(QGPSPhaseSplit):
                 for w in range(epsilon.shape[1]):
                     innerprod = _np.complex128(1.0)
                     for i in range(x.shape[1]):
-                        if _np.sign(Smap[t,i]) * x[b, _np.abs(Smap[t,i])] > 0:
+                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
                             innerprod *= epsilon[i, w, 0]
                         else:
                             innerprod *= epsilon[i, w, 1]
@@ -337,7 +341,7 @@ class QGPSPhaseSplitSumSym(QGPSPhaseSplit):
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap):
+    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap, symSign):
         batch_size = x.shape[0]
 
         if out is None:
@@ -354,7 +358,7 @@ class QGPSPhaseSplitSumSym(QGPSPhaseSplit):
                 for w in range(epsilon.shape[1]):
                     innerargument = _np.complex128(1.0)
                     for i in range(n):
-                        if _np.sign(Smap[t,i]) * x[b, _np.abs(Smap[t,i])] > 0:
+                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
                             innerargument *= epsilon[i, w, 0]
                         else:
                             innerargument *= epsilon[i, w, 1]
@@ -366,14 +370,14 @@ class QGPSPhaseSplitSumSym(QGPSPhaseSplit):
                 for w in range(epsilon.shape[1]):
                     derivative = _np.complex128(1.0)
                     for i in range(n):
-                        if _np.sign(Smap[t,i]) * x[b, _np.abs(Smap[t,i])] > 0:
+                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
                             derivative *= epsilon[i, w, 0]
                         else:
                             derivative *= epsilon[i, w, 1]
                     if w >= n_bond_amplitude:
                         derivative *= 1.0j
                     for i in range(n):
-                        if _np.sign(Smap[t,i]) * x[b, _np.abs(Smap[t,i])] > 0:
+                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
                             out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * derivative/epsilon[i, w, 0]
                         else:
                             out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * derivative/epsilon[i, w, 1]
@@ -391,7 +395,7 @@ class QGPSPhaseSplitProdSym(QGPSPhaseSplit):
 
     @staticmethod
     @jit(nopython=True)
-    def _log_val_kernel(x, out, epsilon, n_bond_amplitude, Smap):
+    def _log_val_kernel(x, out, epsilon, n_bond_amplitude, Smap, symSign):
         if out is None:
             out = _np.empty(x.shape[0], dtype=_np.complex128)
 
@@ -401,7 +405,7 @@ class QGPSPhaseSplitProdSym(QGPSPhaseSplit):
                 for w in range(epsilon.shape[1]):
                     innerprod = _np.complex128(1.0)
                     for i in range(x.shape[1]):
-                        if _np.sign(Smap[t,i]) * x[b, _np.abs(Smap[t,i])] > 0:
+                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
                             innerprod *= epsilon[i, w, 0]
                         else:
                             innerprod *= epsilon[i, w, 1]
@@ -412,7 +416,7 @@ class QGPSPhaseSplitProdSym(QGPSPhaseSplit):
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap):
+    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap, symSign):
         batch_size = x.shape[0]
 
         if out is None:
@@ -427,14 +431,14 @@ class QGPSPhaseSplitProdSym(QGPSPhaseSplit):
                 for w in range(epsilon.shape[1]):
                     derivative = _np.complex128(1.0)
                     for i in range(n):
-                        if _np.sign(Smap[t,i]) * x[b, _np.abs(Smap[t,i])] > 0:
+                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
                             derivative *= epsilon[i, w, 0]
                         else:
                             derivative *= epsilon[i, w, 1]
                     if w >= n_bond_amplitude:
                         derivative *= 1.0j
                     for i in range(n):
-                        if _np.sign(Smap[t,i]) * x[b, _np.abs(Smap[t,i])] > 0:
+                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
                             out[b, 2*epsilon.shape[1]*i + 2*w + 0] += derivative/epsilon[i, w, 0]
                         else:
                             out[b, 2*epsilon.shape[1]*i + 2*w + 1] += derivative/epsilon[i, w, 1]
