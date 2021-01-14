@@ -108,16 +108,13 @@ for it in gs.iter(1950,1):
 epsilon_avg = np.zeros(ma._epsilon.shape, dtype=ma._epsilon.dtype)
 
 for it in gs.iter(50,1):
+    epsilon_avg += ma._epsilon
     if mpi.COMM_WORLD.Get_rank() == 0:
         print(it,gs.energy)
-        epsilon_avg += ma._epsilon
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
 
 epsilon_avg /= 50
-
-mpi.COMM_WORLD.Bcast(epsilon_avg, root=0)
-mpi.COMM_WORLD.barrier()
 
 ma._epsilon = epsilon_avg
 
