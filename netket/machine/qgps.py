@@ -272,9 +272,10 @@ class QGPSPhaseSplit(QGPS):
                  automorphisms=None, spin_flip_sym=False):
         self.n_bond_amplitude = n_bond_amplitude
 
-        if n_bond_phase is not None and n_bond_amplitude is not None and epsilon is not None:
+        if n_bond_phase is not None and n_bond_amplitude is not None:
             n_bond_total = n_bond_phase + n_bond_amplitude
-            assert(n_bond_total == epsilon.shape[1])
+            if epsilon is not None:
+                assert(n_bond_total == epsilon.shape[1])
         else:
             assert(epsilon is not None)
             n_bond_total = epsilon.shape[1]
