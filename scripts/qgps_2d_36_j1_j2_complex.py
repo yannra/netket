@@ -78,13 +78,13 @@ ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=Tru
 ma.init_random_parameters(sigma=0.1)
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.05)
+op = nk.optimizer.Sgd(ma, learning_rate=0.04)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma, diag_shift=0.005)
+sr = nk.optimizer.SR(ma, diag_shift=0.05)
 
 samples = max(5000, ma._epsilon.size * 10)
 
