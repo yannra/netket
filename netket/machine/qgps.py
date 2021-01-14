@@ -6,6 +6,7 @@ import time
 from netket.utils import (
     MPI_comm as _MPI_comm,
     n_nodes as _n_nodes,
+    node_number as _rank
 )
 
 
@@ -74,14 +75,19 @@ class QGPS(AbstractMachine):
         return self._npar
     
     def init_random_parameters(self, seed=None, sigma=0.1):
-        rgen = _np.random.default_rng(seed)
-        self._epsilon.fill(0.0)
-        self._epsilon += rgen.normal(loc=1.0, scale=sigma, size=self._epsilon.shape)
-        if self._dtype == complex:
-            self._epsilon += 1j*rgen.normal(loc=1.0, scale=sigma, size=self._epsilon.shape)
+        epsilon = _np.zeros(self._epsilon.shape, dtype=self._npdtype)
+
+        if _rank == 0:
+            rgen = _np.random.default_rng(seed)
+            epsilon += rgen.normal(loc=1.0, scale=sigma, size=epsilon.shape)
+            if self._dtype == complex:
+                epsilon += 1j*rgen.normal(loc=1.0, scale=sigma, size=epsilon.shape)
+
         if _n_nodes > 1:
-            _MPI_comm.bcast(self._epsilon, root=0)
+            _MPI_comm.Bcast(epsilon, root=0)
             _MPI_comm.barrier()
+
+        self._epsilon = epsilon
 
     def log_val(self, x, out=None):
         r"""Computes the logarithm of the wave function for a batch of visible
