@@ -80,8 +80,8 @@ class QGPS(AbstractMachine):
         if self._dtype == complex:
             self._epsilon += 1j*rgen.normal(loc=1.0, scale=sigma, size=self._epsilon.shape)
         if _n_nodes > 1:
-            self._comm.bcast(self._epsilon, root=0)
-            self._comm.barrier()
+            _MPI_comm.bcast(self._epsilon, root=0)
+            _MPI_comm.barrier()
 
     def log_val(self, x, out=None):
         r"""Computes the logarithm of the wave function for a batch of visible
