@@ -81,7 +81,7 @@ class QGPS(AbstractMachine):
             rgen = _np.random.default_rng(seed)
             epsilon += rgen.normal(loc=1.0, scale=sigma, size=epsilon.shape)
             if self._dtype == complex:
-                epsilon += 1j*rgen.normal(loc=1.0, scale=sigma, size=epsilon.shape)
+                epsilon += 1j*rgen.normal(scale=sigma, size=epsilon.shape)
 
         if _n_nodes > 1:
             _MPI_comm.Bcast(epsilon, root=0)
