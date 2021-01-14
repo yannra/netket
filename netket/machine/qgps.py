@@ -338,7 +338,7 @@ class QGPSPhaseSplitSumSym(QGPSPhaseSplit):
 
     @staticmethod
     @jit(nopython=True)
-    def _log_val_kernel(x, out, epsilon, n_bond_amplitude, symSign):
+    def _log_val_kernel(x, out, epsilon, n_bond_amplitude, Smap, symSign):
         if out is None:
             out = _np.empty(x.shape[0], dtype=_np.complex128)
 
