@@ -53,7 +53,7 @@ class QGPS(AbstractMachine):
 
         self._sym_spin_flip_sign = _np.ones(len(self._Smap), dtype=_np.int8)
         if spin_flip_sym:
-            self._Smap = _np.append(self._Smap, -self._Smap, axis=0)
+            self._Smap = _np.append(self._Smap, self._Smap, axis=0)
             self._sym_spin_flip_sign = _np.append(self._sym_spin_flip_sign,
                                                   -self._sym_spin_flip_sign, axis=0)
 
@@ -161,7 +161,7 @@ class QGPSSumSym(QGPS):
                 for w in range(epsilon.shape[1]):
                     innerprod = _np.complex128(1.0)
                     for i in range(x.shape[1]):
-                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
                             innerprod *= epsilon[i, w, 0]
                         else:
                             innerprod *= epsilon[i, w, 1]
@@ -189,7 +189,7 @@ class QGPSSumSym(QGPS):
                 for w in range(epsilon.shape[1]):
                     innerargument = _np.complex128(1.0)
                     for i in range(n):
-                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
                             innerargument *= epsilon[i, w, 0]
                         else:
                             innerargument *= epsilon[i, w, 1]
@@ -199,12 +199,12 @@ class QGPSSumSym(QGPS):
                 for w in range(epsilon.shape[1]):
                     derivative = _np.complex128(1.0)
                     for i in range(n):
-                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
                             derivative *= epsilon[i, w, 0]
                         else:
                             derivative *= epsilon[i, w, 1]
                     for i in range(n):
-                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
                             out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * derivative/epsilon[i, w, 0]
                         else:
                             out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * derivative/epsilon[i, w, 1]
@@ -232,7 +232,7 @@ class QGPSProdSym(QGPS):
                 for w in range(epsilon.shape[1]):
                     innerprod = _np.complex128(1.0)
                     for i in range(x.shape[1]):
-                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
                             innerprod *= epsilon[i, w, 0]
                         else:
                             innerprod *= epsilon[i, w, 1]
@@ -256,12 +256,12 @@ class QGPSProdSym(QGPS):
                 for w in range(epsilon.shape[1]):
                     derivative = _np.complex128(1.0)
                     for i in range(n):
-                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
                             derivative *= epsilon[i, w, 0]
                         else:
                             derivative *= epsilon[i, w, 1]
                     for i in range(n):
-                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
                             out[b, 2*epsilon.shape[1]*i + 2*w + 0] += derivative/epsilon[i, w, 0]
                         else:
                             out[b, 2*epsilon.shape[1]*i + 2*w + 1] += derivative/epsilon[i, w, 1]
@@ -349,7 +349,7 @@ class QGPSPhaseSplitSumSym(QGPSPhaseSplit):
                 for w in range(epsilon.shape[1]):
                     innerprod = _np.complex128(1.0)
                     for i in range(x.shape[1]):
-                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
                             innerprod *= epsilon[i, w, 0]
                         else:
                             innerprod *= epsilon[i, w, 1]
@@ -379,7 +379,7 @@ class QGPSPhaseSplitSumSym(QGPSPhaseSplit):
                 for w in range(epsilon.shape[1]):
                     innerargument = _np.complex128(1.0)
                     for i in range(n):
-                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
                             innerargument *= epsilon[i, w, 0]
                         else:
                             innerargument *= epsilon[i, w, 1]
@@ -391,14 +391,14 @@ class QGPSPhaseSplitSumSym(QGPSPhaseSplit):
                 for w in range(epsilon.shape[1]):
                     derivative = _np.complex128(1.0)
                     for i in range(n):
-                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
                             derivative *= epsilon[i, w, 0]
                         else:
                             derivative *= epsilon[i, w, 1]
                     if w >= n_bond_amplitude:
                         derivative *= 1.0j
                     for i in range(n):
-                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
                             out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * derivative/epsilon[i, w, 0]
                         else:
                             out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * derivative/epsilon[i, w, 1]
@@ -426,7 +426,7 @@ class QGPSPhaseSplitProdSym(QGPSPhaseSplit):
                 for w in range(epsilon.shape[1]):
                     innerprod = _np.complex128(1.0)
                     for i in range(x.shape[1]):
-                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
                             innerprod *= epsilon[i, w, 0]
                         else:
                             innerprod *= epsilon[i, w, 1]
@@ -452,14 +452,14 @@ class QGPSPhaseSplitProdSym(QGPSPhaseSplit):
                 for w in range(epsilon.shape[1]):
                     derivative = _np.complex128(1.0)
                     for i in range(n):
-                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
                             derivative *= epsilon[i, w, 0]
                         else:
                             derivative *= epsilon[i, w, 1]
                     if w >= n_bond_amplitude:
                         derivative *= 1.0j
                     for i in range(n):
-                        if symSign[t] * x[b, _np.abs(Smap[t,i])] < 0:
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
                             out[b, 2*epsilon.shape[1]*i + 2*w + 0] += derivative/epsilon[i, w, 0]
                         else:
                             out[b, 2*epsilon.shape[1]*i + 2*w + 1] += derivative/epsilon[i, w, 1]
