@@ -26,15 +26,9 @@ for i in range(L):
         line.append((i+k)%L)
     transl.append(line)
 
+ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True)
 
-epsilon = np.zeros((hi.size, N, 2), dtype=float)
-
-for x in range(N):
-    for j in range(0, hi.size):
-        for k in range(2):
-            epsilon[j, x, k] = 0.95 + 0.1*np.random.rand()
-
-ma = nk.machine.QGPSSumSym(hi, epsilon=epsilon, automorphisms=transl, spin_flip_sym=True, dtype=float)
+ma.init_random_parameters(sigma=0.1)
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.04)
@@ -43,25 +37,43 @@ op = nk.optimizer.Sgd(ma, learning_rate=0.04)
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma, diag_shift=0.005)
+sr = nk.optimizer.SR(ma)
 
-samples = max(4000, epsilon.size * 5)
+samples = max(5000, ma._epsilon.size * 5)
 
 # Create the optimization driver
 gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr)
 
-if rank == 1:
+if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
         fl.write("")
 
-for it in gs.iter(2000,1):
-    if rank == 0:
+for it in gs.iter(1950,1):
+    if mpi.COMM_WORLD.Get_rank() == 0:
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
 
-if rank == 0:
+epsilon_avg = np.zeros(ma._epsilon.shape, dtype=ma._epsilon.dtype)
+
+for it in gs.iter(50,1):
+    if mpi.COMM_WORLD.Get_rank() == 0:
+        print(it,gs.energy)
+        epsilon_avg += ma._epsilon
+        with open("out.txt", "a") as fl:
+            fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
+
+epsilon_avg /= 50
+
+mpi.COMM_WORLD.Bcast(epsilon_avg, root=0)
+mpi.COMM_WORLD.barrier()
+
+ma._epsilon = epsilon_avg
+
+sa = nk.sampler.MetropolisExchange(machine=ma,graph=g)
+est = nk.variational.estimate_expectations(ha, sa, 50000, n_discard=100)
+
+if mpi.COMM_WORLD.Get_rank() == 0:
+    np.save("epsilon_avg.npy", ma._epsilon)
     with open("result.txt", "a") as fl:
-        fl.write("{}  {}  {}  {}  {}\n".format(L, N, np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
-
-
+        fl.write("{}  {}  {}  {}  {}\n".format(L, N, np.real(est.mean), np.imag(est.mean), est.error_of_mean))
