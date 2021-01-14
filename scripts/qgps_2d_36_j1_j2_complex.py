@@ -114,7 +114,7 @@ epsilon_avg /= 50
 
 ma._epsilon = epsilon_avg
 
-sa = nk.sampler.MetropolisExchange(machine=ma,graph=g)
+sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2)
 est = nk.variational.estimate_expectations(ha, sa, 50000, n_discard=100)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
