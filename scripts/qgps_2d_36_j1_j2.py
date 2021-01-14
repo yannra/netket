@@ -74,7 +74,7 @@ for i in range(L**2):
     transl.append(line)
 
 
-ma = nk.machine.QGPSPhaseSplitSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True)
+ma = nk.machine.QGPSPhaseSplitSumSym(hi, n_bond_amplitude=N//2, n_bond_phase=N//2, automorphisms=transl, spin_flip_sym=True)
 
 ma.init_random_parameters(sigma=0.1)
 
