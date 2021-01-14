@@ -3,6 +3,10 @@ from netket.graph import AbstractGraph
 import numpy as _np
 from numba import jit
 import time
+from netket.utils import (
+    MPI_comm as _MPI_comm,
+    n_nodes as _n_nodes,
+)
 
 
 class QGPS(AbstractMachine):
@@ -68,6 +72,16 @@ class QGPS(AbstractMachine):
     def n_par(self):
         r"""The number of variational parameters in the machine."""
         return self._npar
+    
+    def init_random_parameters(self, seed=None, sigma=0.1):
+        rgen = _np.random.default_rng(seed)
+        self._epsilon.fill(0.0)
+        self._epsilon += rgen.normal(loc=1.0, scale=sigma, size=self._epsilon.shape)
+        if self._dtype == complex:
+            self._epsilon += 1j*rgen.normal(loc=1.0, scale=sigma, size=self._epsilon.shape)
+        if _n_nodes > 1:
+            self._comm.bcast(self._epsilon, root=0)
+            self._comm.barrier()
 
     def log_val(self, x, out=None):
         r"""Computes the logarithm of the wave function for a batch of visible
