@@ -82,6 +82,7 @@ class QGPS(AbstractMachine):
             epsilon += rgen.normal(loc=1.0, scale=sigma, size=epsilon.shape)
             if self._dtype == complex:
                 epsilon += 1j*rgen.normal(scale=sigma, size=epsilon.shape)
+            epsilon[0,:,:] = 0.0
 
         if _n_nodes > 1:
             _MPI_comm.Bcast(epsilon, root=0)
@@ -205,9 +206,29 @@ class QGPSSumSym(QGPS):
                             derivative *= epsilon[i, w, 1]
                     for i in range(n):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
-                            out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * derivative/epsilon[i, w, 0]
+                            if epsilon[i, w, 0] != 0.0:
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * derivative/epsilon[i, w, 0]
+                            else:
+                                der = _np.complex128(1.0)
+                                for j in range(n):
+                                    if j != i:
+                                        if symSign[t] * x[b, Smap[t,j]] < 0:
+                                            der *= epsilon[j, w, 0]
+                                        else:
+                                            der *= epsilon[j, w, 1]
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * der
                         else:
-                            out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * derivative/epsilon[i, w, 1]
+                            if epsilon[i, w, 1] != 0.0:
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * derivative/epsilon[i, w, 1]
+                            else:
+                                der = _np.complex128(1.0)
+                                for j in range(n):
+                                    if j != i:
+                                        if symSign[t] * x[b, Smap[t,j]] < 0:
+                                            der *= epsilon[j, w, 0]
+                                        else:
+                                            der *= epsilon[j, w, 1]
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * der
                 value += prefactor
             out[b, :] /= value
         return out
@@ -262,9 +283,29 @@ class QGPSProdSym(QGPS):
                             derivative *= epsilon[i, w, 1]
                     for i in range(n):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
-                            out[b, 2*epsilon.shape[1]*i + 2*w + 0] += derivative/epsilon[i, w, 0]
+                            if epsilon[i, w, 0] != 0.0:
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += derivative/epsilon[i, w, 0]
+                            else:
+                                der = _np.complex128(1.0)
+                                for j in range(n):
+                                    if j != i:
+                                        if symSign[t] * x[b, Smap[t,j]] < 0:
+                                            der *= epsilon[j, w, 0]
+                                        else:
+                                            der *= epsilon[j, w, 1]
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += der
                         else:
-                            out[b, 2*epsilon.shape[1]*i + 2*w + 1] += derivative/epsilon[i, w, 1]
+                            if epsilon[i, w, 1] != 0.0:
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += derivative/epsilon[i, w, 1]
+                            else:
+                                der = _np.complex128(1.0)
+                                for j in range(n):
+                                    if j != i:
+                                        if symSign[t] * x[b, Smap[t,j]] < 0:
+                                            der *= epsilon[j, w, 0]
+                                        else:
+                                            der *= epsilon[j, w, 1]
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += der
         return out
 
 class QGPSPhaseSplit(QGPS):
@@ -327,6 +368,23 @@ class QGPSPhaseSplit(QGPS):
                                    self._npar, self._Smap, self._sym_spin_flip_sign)
         self.der_time += time.time() - start
         return der
+    
+    def init_random_parameters(self, seed=None, sigma=0.1):
+        epsilon = _np.zeros(self._epsilon.shape, dtype=self._npdtype)
+
+        if _rank == 0:
+            rgen = _np.random.default_rng(seed)
+            amp_bond = self.n_bond_amplitude
+            eps_shape = epsilon.shape
+            epsilon[:,:,:] += rgen.normal(loc=1.0, scale=sigma, size=eps_shape)
+            epsilon[0,:amp_bond,:] = 0.0
+            epsilon[0,amp_bond:,:] -= 1.0
+
+        if _n_nodes > 1:
+            _MPI_comm.Bcast(epsilon, root=0)
+            _MPI_comm.barrier()
+
+        self._epsilon = epsilon
 
 
 class QGPSPhaseSplitSumSym(QGPSPhaseSplit):
@@ -397,11 +455,37 @@ class QGPSPhaseSplitSumSym(QGPSPhaseSplit):
                             derivative *= epsilon[i, w, 1]
                     if w >= n_bond_amplitude:
                         derivative *= 1.0j
+                
+
                     for i in range(n):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
-                            out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * derivative/epsilon[i, w, 0]
+                            if epsilon[i, w, 0] != 0.0:
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * derivative/epsilon[i, w, 0]
+                            else:
+                                der = _np.complex128(1.0)
+                                for j in range(n):
+                                    if j != i:
+                                        if symSign[t] * x[b, Smap[t,j]] < 0:
+                                            der *= epsilon[j, w, 0]
+                                        else:
+                                            der *= epsilon[j, w, 1]
+                                if w >= n_bond_amplitude:
+                                    der *= 1.0j
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * der
                         else:
-                            out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * derivative/epsilon[i, w, 1]
+                            if epsilon[i, w, 1] != 0.0:
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * derivative/epsilon[i, w, 1]
+                            else:
+                                der = _np.complex128(1.0)
+                                for j in range(n):
+                                    if j != i:
+                                        if symSign[t] * x[b, Smap[t,j]] < 0:
+                                            der *= epsilon[j, w, 0]
+                                        else:
+                                            der *= epsilon[j, w, 1]
+                                if w >= n_bond_amplitude:
+                                    der *= 1.0j
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * der
                 value += prefactor
             out[b, :] /= value
         return out
@@ -458,9 +542,34 @@ class QGPSPhaseSplitProdSym(QGPSPhaseSplit):
                             derivative *= epsilon[i, w, 1]
                     if w >= n_bond_amplitude:
                         derivative *= 1.0j
+
                     for i in range(n):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
-                            out[b, 2*epsilon.shape[1]*i + 2*w + 0] += derivative/epsilon[i, w, 0]
+                            if epsilon[i, w, 0] != 0.0:
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += derivative/epsilon[i, w, 0]
+                            else:
+                                der = _np.complex128(1.0)
+                                for j in range(n):
+                                    if j != i:
+                                        if symSign[t] * x[b, Smap[t,j]] < 0:
+                                            der *= epsilon[j, w, 0]
+                                        else:
+                                            der *= epsilon[j, w, 1]
+                                if w >= n_bond_amplitude:
+                                    der *= 1.0j
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += der
                         else:
-                            out[b, 2*epsilon.shape[1]*i + 2*w + 1] += derivative/epsilon[i, w, 1]
+                            if epsilon[i, w, 1] != 0.0:
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += derivative/epsilon[i, w, 1]
+                            else:
+                                der = _np.complex128(1.0)
+                                for j in range(n):
+                                    if j != i:
+                                        if symSign[t] * x[b, Smap[t,j]] < 0:
+                                            der *= epsilon[j, w, 0]
+                                        else:
+                                            der *= epsilon[j, w, 1]
+                                if w >= n_bond_amplitude:
+                                    der *= 1.0j
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += der
         return out
