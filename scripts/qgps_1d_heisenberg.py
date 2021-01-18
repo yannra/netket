@@ -42,7 +42,7 @@ sr = nk.optimizer.SR(ma)
 samples = max(5000, ma._epsilon.size * 5)
 
 # Create the optimization driver
-gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr)
+gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
