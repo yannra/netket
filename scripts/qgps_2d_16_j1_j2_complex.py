@@ -82,7 +82,7 @@ ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=Tru
 ma.init_random_parameters(sigma=0.1)
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.04)
+op = nk.optimizer.Sgd(ma, learning_rate=0.01)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2)
@@ -93,7 +93,7 @@ sr = nk.optimizer.SR(ma)
 samples = max(5000, ma._epsilon.size * 10)
 
 # Create the optimization driver
-gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr)
+gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
