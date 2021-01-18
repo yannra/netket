@@ -26,7 +26,7 @@ for i in range(L):
         line.append((i+k)%L)
     transl.append(line)
 
-ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True)
+ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=float)
 
 ma.init_random_parameters(sigma=0.1)
 
