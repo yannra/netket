@@ -1,12 +1,13 @@
 import numpy as np
 import netket as nk
 import sys
-import mpi4py as mpi
+import mpi4py.MPI as mpi
+import symmetries
 
 L = int(sys.argv[1])
 N = int(sys.argv[2])
 
-rank = mpi.MPI.COMM_WORLD.Get_rank()
+rank = mpi.COMM_WORLD.Get_rank()
 
 if rank == 0:
     with open("result.txt", "w") as fl:
@@ -19,19 +20,14 @@ hi = nk.hilbert.Spin(s=0.5, total_sz=0.0, N=g.n_nodes)
 
 ha = nk.operator.Heisenberg(hi, g, J=0.25)
 
-transl = []
-for i in range(L):
-    line = []
-    for k in range(L):
-        line.append((i+k)%L)
-    transl.append(line)
+transl = symmetries.get_symms_chain(L)
 
 ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=float)
 
 ma.init_random_parameters(sigma=0.1)
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.02)
+op = nk.optimizer.Sgd(ma, learning_rate=0.03)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g)
