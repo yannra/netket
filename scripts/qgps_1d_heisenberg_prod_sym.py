@@ -27,7 +27,7 @@ ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=Tr
 ma.init_random_parameters(sigma=0.1)
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.03)
+op = nk.optimizer.Sgd(ma, learning_rate=0.04)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g)
