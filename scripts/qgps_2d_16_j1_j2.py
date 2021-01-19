@@ -57,11 +57,6 @@ ha = nk.operator.LocalOperator(hi)
 for mat, site in zip(mats, sites):
     ha += nk.operator.LocalOperator(hi, mat, site)
 
-
-
-nk.exact.lanczos_ed(ha, compute_eigenvectors=False)
-
-
 transl = symmetries.get_symms_square_lattice(L)
 
 ma = nk.machine.QGPSPhaseSplitSumSym(hi, n_bond_amplitude=N//2, n_bond_phase=N//2, automorphisms=transl, spin_flip_sym=True)

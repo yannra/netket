@@ -58,10 +58,6 @@ for mat, site in zip(mats, sites):
     ha += nk.operator.LocalOperator(hi, mat, site)
 
 
-
-nk.exact.lanczos_ed(ha, compute_eigenvectors=False)
-
-
 transl = symmetries.get_symms_square_lattice(L)
 
 ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)

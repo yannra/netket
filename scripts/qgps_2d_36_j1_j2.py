@@ -2,6 +2,8 @@ import numpy as np
 import netket as nk
 import sys
 import mpi4py.MPI as mpi
+import symmetries
+
 
 N = int(sys.argv[1])
 J2 = float(sys.argv[2])
@@ -57,40 +59,25 @@ for mat, site in zip(mats, sites):
     ha += nk.operator.LocalOperator(hi, mat, site)
 
 
-transl = []
-for i in range(L**2):
-    line = []
-    col_id = i%L
-    row_id = i//L
-    for k in range(L):
-        for l in range(L):
-            line.append(L*row_id + col_id)
-            col_id += 1
-            if col_id == L:
-                col_id = 0
-        row_id += 1
-        if row_id == L:
-            row_id = 0
-    transl.append(line)
-
+transl = symmetries.get_symms_square_lattice(L)
 
 ma = nk.machine.QGPSPhaseSplitSumSym(hi, n_bond_amplitude=N//2, n_bond_phase=N//2, automorphisms=transl, spin_flip_sym=True)
 
 ma.init_random_parameters(sigma=0.1)
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.02)
+op = nk.optimizer.Sgd(ma, learning_rate=0.03)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma, diag_shift=0.1)
+sr = nk.optimizer.SR(ma)
 
 samples = max(10000, ma._epsilon.size * 5)
 
 # Create the optimization driver
-gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=100)
+gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:

@@ -2,6 +2,7 @@ import numpy as np
 import netket as nk
 import sys
 import mpi4py as mpi
+import symmetries
 
 N = int(sys.argv[1])
 J2 = float(sys.argv[2])
@@ -57,25 +58,7 @@ for mat, site in zip(mats, sites):
     ha += nk.operator.LocalOperator(hi, mat, site)
 
 
-
-nk.exact.lanczos_ed(ha, compute_eigenvectors=False)
-
-
-transl = []
-for i in range(L**2):
-    line = []
-    col_id = i%L
-    row_id = i//L
-    for k in range(L):
-        for l in range(L):
-            line.append(L*row_id + col_id)
-            col_id += 1
-            if col_id == L:
-                col_id = 0
-        row_id += 1
-        if row_id == L:
-            row_id = 0
-    transl.append(line)
+transl = symmetries.get_symms_square_lattice(L)
 
 ma = nk.machine.QGPSPhaseSplitProdSym(hi, n_bond_amplitude=N//2, n_bond_phase=N//2, automorphisms=transl, spin_flip_sym=True)
 
