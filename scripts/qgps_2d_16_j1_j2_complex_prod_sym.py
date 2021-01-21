@@ -58,7 +58,7 @@ for mat, site in zip(mats, sites):
     ha += nk.operator.LocalOperator(hi, mat, site)
 
 
-transl = symmetries.get_symms_square_lattice(L)
+transl = symmetries.get_symms_square_lattice(L, point_group=False)
 
 ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
 
