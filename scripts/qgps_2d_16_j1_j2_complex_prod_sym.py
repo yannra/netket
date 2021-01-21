@@ -1,7 +1,7 @@
 import numpy as np
 import netket as nk
 import sys
-import mpi4py as mpi
+import mpi4py.MPI as mpi
 import symmetries
 
 N = int(sys.argv[1])
@@ -9,7 +9,7 @@ J2 = float(sys.argv[2])
 
 J1 = 1.0
 
-if mpi.MPI.COMM_WORLD.Get_rank() == 0:
+if mpi.COMM_WORLD.Get_rank() == 0:
     with open("result.txt", "w") as fl:
         fl.write("N, energy (real), energy (imag), energy_error\n")
 
