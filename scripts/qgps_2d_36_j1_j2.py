@@ -66,15 +66,15 @@ ma = nk.machine.QGPSPhaseSplitSumSym(hi, n_bond_amplitude=N//2, n_bond_phase=N//
 ma.init_random_parameters(sigma=0.1)
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.03)
+op = nk.optimizer.Sgd(ma, learning_rate=0.02)
 
 # Sampler
-sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2)
+sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma)
+sr = nk.optimizer.SR(ma, diag_shift=0.02)
 
-samples = max(10000, ma._epsilon.size * 5)
+samples = 10000
 
 # Create the optimization driver
 gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
