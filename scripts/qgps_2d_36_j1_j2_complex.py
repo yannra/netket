@@ -71,7 +71,7 @@ sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
 # Stochastic Reconfiguration
 sr = nk.optimizer.SR(ma, diag_shift=0.02)
 
-samples = 20000
+samples = 15000
 
 # Create the optimization driver
 gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
