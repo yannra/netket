@@ -1,5 +1,6 @@
 import numpy as np
 import netket as nk
+from shutil import move
 import sys
 import mpi4py.MPI as mpi
 import symmetries
@@ -69,7 +70,7 @@ op = nk.optimizer.Sgd(ma, learning_rate=0.01)
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma, diag_shift=0.1)
+sr = nk.optimizer.SR(ma, diag_shift=0.5)
 
 samples = 25000
 
@@ -80,8 +81,12 @@ if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
         fl.write("")
 
+np.save("epsilon.npy", ma._epsilon)
+
 for it in gs.iter(1950,1):
     if mpi.COMM_WORLD.Get_rank() == 0:
+        move("epsilon.npy", "epsilon_old.npy")
+        np.save("epsilon.npy", ma._epsilon)
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
@@ -91,6 +96,8 @@ epsilon_avg = np.zeros(ma._epsilon.shape, dtype=ma._epsilon.dtype)
 for it in gs.iter(50,1):
     epsilon_avg += ma._epsilon
     if mpi.COMM_WORLD.Get_rank() == 0:
+        move("epsilon.npy", "epsilon_old.npy")
+        np.save("epsilon.npy", ma._epsilon)
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
