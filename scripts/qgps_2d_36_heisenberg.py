@@ -68,10 +68,10 @@ if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
         fl.write("")
 
-np.save("epsilon.npy", ma._epsilon)
+rank = mpi.COMM_WORLD.Get_rank() 
+np.save("epsilon_{}.npy".format(rank), ma._epsilon)
 
 for it in gs.iter(1950,1):
-    rank = mpi.COMM_WORLD.Get_rank() 
     move("epsilon_{}.npy".format(rank), "epsilon_old_{}.npy".format(rank))
     np.save("epsilon_{}.npy".format(rank), ma._epsilon)
     if mpi.COMM_WORLD.Get_rank() == 0:
