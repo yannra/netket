@@ -68,12 +68,7 @@ if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
         fl.write("")
 
-rank = mpi.COMM_WORLD.Get_rank() 
-np.save("epsilon_{}.npy".format(rank), ma._epsilon)
-
 for it in gs.iter(1950,1):
-    move("epsilon_{}.npy".format(rank), "epsilon_old_{}.npy".format(rank))
-    np.save("epsilon_{}.npy".format(rank), ma._epsilon)
     if mpi.COMM_WORLD.Get_rank() == 0:
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
@@ -83,12 +78,7 @@ epsilon_avg = np.zeros(ma._epsilon.shape, dtype=ma._epsilon.dtype)
 
 for it in gs.iter(50,1):
     epsilon_avg += ma._epsilon
-    rank = mpi.COMM_WORLD.Get_rank() 
-    move("epsilon_{}.npy".format(rank), "epsilon_old_{}.npy".format(rank))
-    np.save("epsilon_{}.npy".format(rank), ma._epsilon)
     if mpi.COMM_WORLD.Get_rank() == 0:
-        move("epsilon.npy", "epsilon_old.npy")
-        np.save("epsilon.npy", ma._epsilon)
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
