@@ -67,13 +67,13 @@ epsilon = np.load("/home/mmm0475/data/vGPS/heisenberg2D/Heisenberg_vGPS_netket_2
 ma._epsilon[:, :20, :] = epsilon
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.06)
+op = nk.optimizer.Sgd(ma, learning_rate=0.05)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma, diag_shift=0.01)
+sr = nk.optimizer.SR(ma, diag_shift=0.001)
 
 samples = 25000
 
