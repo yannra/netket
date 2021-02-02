@@ -48,9 +48,7 @@ for mat, site in zip(mats, sites):
 transl = symmetries.get_symms_square_lattice(L)
 
 ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=float)
-ma.init_random_parameters(sigma=1.0)
-
-ma._epsilon[1:-1,:,:] = 1.
+ma.init_random_parameters()
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.02)
