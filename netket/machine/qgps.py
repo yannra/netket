@@ -74,7 +74,7 @@ class QGPS(AbstractMachine):
         r"""The number of variational parameters in the machine."""
         return self._npar
     
-    def init_random_parameters(self, seed=None, sigma=0.1, random_sign=True):
+    def init_random_parameters(self, seed=None, sigma=0.01, random_sign=False):
         epsilon = _np.ones(self._epsilon.shape, dtype=self._npdtype)
 
         if _rank == 0:
@@ -373,7 +373,7 @@ class QGPSPhaseSplit(QGPS):
         self.der_time += time.time() - start
         return der
     
-    def init_random_parameters(self, seed=None, sigma=0.1, random_sign=True):
+    def init_random_parameters(self, seed=None, sigma=0.01, random_sign=False):
         epsilon = _np.ones(self._epsilon.shape, dtype=self._npdtype)
 
         if _rank == 0:
@@ -382,6 +382,7 @@ class QGPSPhaseSplit(QGPS):
             eps_shape = epsilon.shape
             epsilon[:,:,:] += rgen.normal(scale=sigma, size=eps_shape)
             epsilon[0,:amp_bond,:] = 0.0
+            epsilon[0,amp_bond:,:] = sigma
             if random_sign:
                 epsilon *= (2*rgen.integers(0,2,size=epsilon.shape)-1)
 
