@@ -48,16 +48,16 @@ for mat, site in zip(mats, sites):
 transl = symmetries.get_symms_square_lattice(L)
 
 ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=float)
-ma.init_random_parameters(sigma=0.5)
+ma.init_random_parameters(sigma=1.0)
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.01)
+op = nk.optimizer.Sgd(ma, learning_rate=0.02)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=1, n_chains=1)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma, diag_shift=0.05)
+sr = nk.optimizer.SR(ma, diag_shift=0.02)
 
 samples = 10000
 
