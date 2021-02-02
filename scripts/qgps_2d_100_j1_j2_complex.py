@@ -70,7 +70,7 @@ op = nk.optimizer.Sgd(ma, learning_rate=0.01)
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma, diag_shift=0.1, lsq_solver="SVD", svd_threshold=1.e-3)
+sr = nk.optimizer.SR(ma, diag_shift=1.0, lsq_solver="SVD", svd_threshold=1.e-2)
 
 samples = 25000
 
