@@ -74,8 +74,8 @@ class QGPS(AbstractMachine):
         r"""The number of variational parameters in the machine."""
         return self._npar
     
-    def init_random_parameters(self, seed=None, sigma=1.0):
-        epsilon = _np.zeros(self._epsilon.shape, dtype=self._npdtype)
+    def init_random_parameters(self, seed=None, sigma=0.01, random_sign=True):
+        epsilon = _np.ones(self._epsilon.shape, dtype=self._npdtype)
 
         if _rank == 0:
             rgen = _np.random.default_rng(seed)
@@ -83,6 +83,8 @@ class QGPS(AbstractMachine):
             if self._dtype == complex:
                 epsilon += 1j*rgen.normal(scale=sigma, size=epsilon.shape)
             epsilon[0,:,:] = 0.0
+            if random_sign:
+                epsilon *= (2*rgen.integers(0,2,size=epsilon.shape)-1)
 
         if _n_nodes > 1:
             _MPI_comm.Bcast(epsilon, root=0)
@@ -371,8 +373,8 @@ class QGPSPhaseSplit(QGPS):
         self.der_time += time.time() - start
         return der
     
-    def init_random_parameters(self, seed=None, sigma=1.0):
-        epsilon = _np.zeros(self._epsilon.shape, dtype=self._npdtype)
+    def init_random_parameters(self, seed=None, sigma=0.01, random_sign=True):
+        epsilon = _np.ones(self._epsilon.shape, dtype=self._npdtype)
 
         if _rank == 0:
             rgen = _np.random.default_rng(seed)
@@ -380,6 +382,8 @@ class QGPSPhaseSplit(QGPS):
             eps_shape = epsilon.shape
             epsilon[:,:,:] += rgen.normal(scale=sigma, size=eps_shape)
             epsilon[0,:amp_bond,:] = 0.0
+            if random_sign:
+                epsilon *= (2*rgen.integers(0,2,size=epsilon.shape)-1)
 
         if _n_nodes > 1:
             _MPI_comm.Bcast(epsilon, root=0)
