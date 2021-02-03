@@ -6,6 +6,7 @@ import mpi4py.MPI as mpi
 import symmetries
 
 N = int(sys.argv[1])
+cluster_edge = int(sys.argv[2])
 
 J1 = 1.0
 
@@ -47,7 +48,13 @@ for mat, site in zip(mats, sites):
 
 transl = symmetries.get_symms_square_lattice(L)
 
-ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=float)
+cluster_ids=[]
+for i in range(cluster_edge):
+    for j in range(cluster_edge):
+        cluster_ids.append(i * L + j)
+
+
+ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, cluster_ids = cluster_ids, dtype=float)
 ma.init_random_parameters()
 
 # Optimizer
