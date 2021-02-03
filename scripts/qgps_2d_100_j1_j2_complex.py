@@ -7,6 +7,7 @@ import symmetries
 
 N = int(sys.argv[1])
 J2 = float(sys.argv[2])
+cluster_edge = int(sys.argv[3])
 
 J1 = 1.0
 
@@ -49,6 +50,10 @@ for i in range(L):
         mats.append(((J2/4) * exchange))
         sites.append([i * L + j, ((i+1)%L) * L + (j-1)%L])
 
+cluster_ids=[]
+for i in range(cluster_edge):
+    for j in range(cluster_edge):
+        cluster_ids.append(i * L + j)
 
 # Spin based Hilbert Space
 hi = nk.hilbert.Spin(s=0.5, total_sz=0.0, N=g.n_nodes)
@@ -60,17 +65,17 @@ for mat, site in zip(mats, sites):
 
 transl = symmetries.get_symms_square_lattice(L)
 
-ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-ma.init_random_parameters(sigma=0.1)
+ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, cluster_ids=cluster_ids, dtype=complex)
+ma.init_random_parameters(sigma=1)
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.01)
+op = nk.optimizer.Sgd(ma, learning_rate=0.02)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma, diag_shift=1.0, lsq_solver="SVD", svd_threshold=1.e-2)
+sr = nk.optimizer.SR(ma, diag_shift=0.02)
 
 samples = 25000
 
