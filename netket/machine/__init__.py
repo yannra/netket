@@ -2,7 +2,7 @@ from .abstract_machine import AbstractMachine
 
 from .rbm import RbmSpin, RbmSpinReal, RbmSpinSymm, RbmMultiVal, RbmSpinPhase
 from .jastrow import Jastrow, JastrowSymm
-from .qgps import QGPSSumSym, QGPSProdSym, QGPSPhaseSplitSumSym, QGPSPhaseSplitProdSym
+from .qgps import QGPSSumSym, QGPSProdSym, QGPSSumSymExp, QGPSProdSymExp, QGPSPhaseSplitSumSym, QGPSPhaseSplitProdSym
 from ..utils import jax_available, torch_available
 
 
