@@ -326,9 +326,9 @@ class QGPSExp(QGPS):
 
         if _rank == 0:
             rgen = _np.random.default_rng(seed)
-            epsilon[0,:,0] += rgen.normal(scale=sigma, size=epsilon.shape)
+            epsilon[0,:,:] += rgen.normal(scale=sigma, size=(epsilon.shape[1], epsilon.shape[2]))
             if self._dtype == complex:
-                epsilon[0,:,0] += 1j*rgen.normal(scale=sigma, size=epsilon.shape)
+                epsilon[0,:,:] += 1j*rgen.normal(scale=sigma, size=(epsilon.shape[1], epsilon.shape[2]))
 
         if _n_nodes > 1:
             _MPI_comm.Bcast(epsilon, root=0)
