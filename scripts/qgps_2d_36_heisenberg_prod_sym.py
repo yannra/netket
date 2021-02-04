@@ -53,7 +53,7 @@ for i in range(cluster_edge):
     for j in range(cluster_edge):
         cluster_ids.append(i * L + j)
 
-ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, cluster_ids = cluster_ids, dtype=float)
+ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, cluster_ids = cluster_ids, dtype=complex)
 ma.init_random_parameters()
 
 # Optimizer
