@@ -214,7 +214,7 @@ class QGPSSumSym(QGPS):
                             derivative *= epsilon[i, w, 1]
                     for i in range(Smap.shape[1]):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
-                            if _np.abs(epsilon[i, w, 0]) > eps:
+                            if _np.abs(epsilon[i, w, 0]) > 1.e4*eps:
                                 out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * derivative/epsilon[i, w, 0]
                             else:
                                 der = _np.complex128(1.0)
@@ -226,7 +226,7 @@ class QGPSSumSym(QGPS):
                                             der *= epsilon[j, w, 1]
                                 out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * der
                         else:
-                            if _np.abs(epsilon[i, w, 1]) > eps:
+                            if _np.abs(epsilon[i, w, 1]) > 1.e4*eps:
                                 out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * derivative/epsilon[i, w, 1]
                             else:
                                 der = _np.complex128(1.0)
@@ -292,7 +292,7 @@ class QGPSProdSym(QGPS):
                             derivative *= epsilon[i, w, 1]
                     for i in range(Smap.shape[1]):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
-                            if _np.abs(epsilon[i, w, 0]) > eps:
+                            if _np.abs(epsilon[i, w, 0]) > 1.e4*eps:
                                 out[b, 2*epsilon.shape[1]*i + 2*w + 0] += derivative/epsilon[i, w, 0]
                             else:
                                 der = _np.complex128(1.0)
@@ -304,7 +304,7 @@ class QGPSProdSym(QGPS):
                                             der *= epsilon[j, w, 1]
                                 out[b, 2*epsilon.shape[1]*i + 2*w + 0] += der
                         else:
-                            if _np.abs(epsilon[i, w, 1]) > eps:
+                            if _np.abs(epsilon[i, w, 1]) > 1.e4*eps:
                                 out[b, 2*epsilon.shape[1]*i + 2*w + 1] += derivative/epsilon[i, w, 1]
                             else:
                                 der = _np.complex128(1.0)
@@ -471,7 +471,7 @@ class QGPSPhaseSplitSumSym(QGPSPhaseSplit):
 
                     for i in range(Smap.shape[1]):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
-                            if _np.abs(epsilon[i, w, 0]) > eps:
+                            if _np.abs(epsilon[i, w, 0]) > 1.e4*eps:
                                 out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * derivative/epsilon[i, w, 0]
                             else:
                                 der = _np.complex128(1.0)
@@ -485,7 +485,7 @@ class QGPSPhaseSplitSumSym(QGPSPhaseSplit):
                                     der *= 1.0j
                                 out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * der
                         else:
-                            if _np.abs(epsilon[i, w, 1]) > eps:
+                            if _np.abs(epsilon[i, w, 1]) > 1.e4*eps:
                                 out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * derivative/epsilon[i, w, 1]
                             else:
                                 der = _np.complex128(1.0)
@@ -558,7 +558,7 @@ class QGPSPhaseSplitProdSym(QGPSPhaseSplit):
 
                     for i in range(Smap.shape[1]):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
-                            if _np.abs(epsilon[i, w, 0]) > eps:
+                            if _np.abs(epsilon[i, w, 0]) > 1.e4*eps:
                                 out[b, 2*epsilon.shape[1]*i + 2*w + 0] += derivative/epsilon[i, w, 0]
                             else:
                                 der = _np.complex128(1.0)
@@ -572,7 +572,7 @@ class QGPSPhaseSplitProdSym(QGPSPhaseSplit):
                                     der *= 1.0j
                                 out[b, 2*epsilon.shape[1]*i + 2*w + 0] += der
                         else:
-                            if _np.abs(epsilon[i, w, 1]) > eps:
+                            if _np.abs(epsilon[i, w, 1]) > 1.e4*eps:
                                 out[b, 2*epsilon.shape[1]*i + 2*w + 1] += derivative/epsilon[i, w, 1]
                             else:
                                 der = _np.complex128(1.0)
