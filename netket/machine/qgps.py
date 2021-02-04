@@ -318,8 +318,6 @@ class QGPSProdSym(QGPS):
         return out
 
 
-
-
 class QGPSExp(QGPS):
     def __init__(self, hilbert, epsilon=None, n_bond=None, automorphisms=None,
                  spin_flip_sym=False, cluster_ids=None, dtype=complex):
