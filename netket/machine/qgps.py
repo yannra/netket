@@ -321,17 +321,14 @@ class QGPSExp(QGPS):
                          automorphisms=automorphisms, spin_flip_sym=spin_flip_sym,
                          cluster_ids=cluster_ids, dtype=dtype)
 
-    def init_random_parameters(self, seed=None, sigma=0.1, random_sign=False):
+    def init_random_parameters(self, seed=None, sigma=0.1):
         epsilon = _np.zeros(self._epsilon.shape, dtype=self._npdtype)
 
         if _rank == 0:
             rgen = _np.random.default_rng(seed)
-            epsilon += rgen.normal(scale=sigma, size=epsilon.shape)
+            epsilon[0,:,0] += rgen.normal(scale=sigma, size=epsilon.shape)
             if self._dtype == complex:
-                epsilon += 1j*rgen.normal(scale=sigma, size=epsilon.shape)
-            epsilon[0,:,:] = 0.0
-            if random_sign:
-                epsilon *= (2*rgen.integers(0,2,size=epsilon.shape)-1)
+                epsilon[0,:,0] += 1j*rgen.normal(scale=sigma, size=epsilon.shape)
 
         if _n_nodes > 1:
             _MPI_comm.Bcast(epsilon, root=0)
