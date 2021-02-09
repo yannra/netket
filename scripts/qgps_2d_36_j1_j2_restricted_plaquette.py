@@ -62,7 +62,7 @@ for mat, site in zip(mats, sites):
 
 transl = symmetries.get_symms_square_lattice(L)
 
-plaquette_ids = [0,1,6,5,30,7,11,35,31,2,12,4,24]
+plaquette_ids = [0,1,2,3,6,7,8,9,12,13,14,15,18,19,20,21]
 
 if mode == 0:
     ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, cluster_ids=plaquette_ids, dtype=complex)
