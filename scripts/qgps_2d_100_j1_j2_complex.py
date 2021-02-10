@@ -75,12 +75,12 @@ op = nk.optimizer.Sgd(ma, learning_rate=0.01)
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma, diag_shift=0.02)
+sr = nk.optimizer.SR(ma, diag_shift=0.05)
 
 samples = 25000
 
 # Create the optimization driver
-gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
+gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=100)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
