@@ -921,7 +921,6 @@ class QGPSPhaseSplitSumSymAltReg(QGPSPhaseSplit):
                         prefactor = prefactor_phase
                     else:
                         prefactor = prefactor_abs
-                
 
                     for i in range(Smap.shape[1]):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
