@@ -845,3 +845,105 @@ class QGPSPhaseSplitSumSymReg(QGPSPhaseSplit):
             _MPI_comm.barrier()
 
         self._epsilon = epsilon
+
+
+class QGPSPhaseSplitSumSymAltReg(QGPSPhaseSplit):
+    def __init__(self, hilbert, epsilon=None, n_bond_amplitude=None, n_bond_phase=None,
+                 automorphisms=None, spin_flip_sym=False, cluster_ids=None):
+        super().__init__(hilbert, epsilon=epsilon, n_bond_amplitude=n_bond_amplitude,
+                         n_bond_phase=n_bond_phase, automorphisms=automorphisms,
+                         spin_flip_sym=spin_flip_sym, cluster_ids=cluster_ids)
+
+    @staticmethod
+    @jit(nopython=True)
+    def _log_val_kernel(x, out, epsilon, n_bond_amplitude, Smap, symSign):
+        if out is None:
+            out = _np.empty(x.shape[0], dtype=_np.complex128)
+
+        for b in range(x.shape[0]):
+            out[b] = 0.0
+            for t in range(Smap.shape[0]):
+                arg_abs = _np.complex128(0.0)
+                arg_phase = _np.complex128(0.0)
+                for w in range(epsilon.shape[1]):
+                    innerprod = _np.complex128(1.0)
+                    for i in range(Smap.shape[1]):
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
+                            innerprod *= epsilon[i, w, 0]
+                        else:
+                            innerprod *= epsilon[i, w, 1]
+                    if w >= n_bond_amplitude:
+                        arg_phase += innerprod**2
+                    else:
+                        arg_abs += innerprod**2
+                out[b] += _np.exp(-(arg_abs+1j*arg_phase))
+            out[b] = _np.log(out[b])
+        return out
+
+    @staticmethod
+    @jit(nopython=True)
+    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap, symSign):
+        batch_size = x.shape[0]
+        eps = _np.finfo(_np.double).eps
+
+        if out is None:
+            out = _np.empty((batch_size, n_par), dtype=_np.complex128)
+
+        out.fill(0.0)
+
+        for b in range(batch_size):
+            value = _np.complex128(0.0)
+            for t in range(Smap.shape[0]):
+                argument_abs = _np.complex128(0.0)
+                argument_phase = _np.complex128(0.0)
+                for w in range(epsilon.shape[1]):
+                    innerargument = _np.complex128(1.0)
+                    for i in range(Smap.shape[1]):
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
+                            innerargument *= epsilon[i, w, 0]
+                        else:
+                            innerargument *= epsilon[i, w, 1]
+                    if w >= n_bond_amplitude:
+                        argument_phase += innerargument**2
+                    else:
+                        argument_abs += innerargument**2
+                prefactor_abs = -2*_np.exp(-(argument_abs + 1j*argument_phase))
+                prefactor_phase = -2j*_np.exp(-(argument_abs + 1j*argument_phase))
+
+                for w in range(epsilon.shape[1]):
+                    derivative = _np.complex128(1.0)
+                    for i in range(Smap.shape[1]):
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
+                            derivative *= epsilon[i, w, 0]
+                        else:
+                            derivative *= epsilon[i, w, 1]
+                    if w >= n_bond_amplitude:
+                        prefactor = prefactor_phase
+                    else:
+                        prefactor = prefactor_abs
+                
+
+                    for i in range(Smap.shape[1]):
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
+                            if _np.abs(epsilon[i, w, 0]) > 1.e2*eps:
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * (derivative**2)/epsilon[i, w, 0]
+                        else:
+                            if _np.abs(epsilon[i, w, 1]) > 1.e2*eps:
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * (derivative**2)/epsilon[i, w, 1]
+                value += _np.exp(-(argument_abs + 1j*argument_phase))
+            out[b, :] /= value
+        return out
+    
+    def init_random_parameters(self, seed=None, sigma=0.1):
+        epsilon = _np.ones(self._epsilon.shape, dtype=self._npdtype)
+
+        if _rank == 0:
+            rgen = _np.random.default_rng(seed)
+            eps_shape = epsilon.shape
+            epsilon[:,:,:] += rgen.normal(scale=sigma, size=eps_shape)
+
+        if _n_nodes > 1:
+            _MPI_comm.Bcast(epsilon, root=0)
+            _MPI_comm.barrier()
+
+        self._epsilon = epsilon
