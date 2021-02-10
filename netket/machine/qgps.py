@@ -831,3 +831,17 @@ class QGPSPhaseSplitSumSymReg(QGPSPhaseSplit):
                 value += _np.exp(-(argument_abs**2 + 1j*argument_phase**2))
             out[b, :] /= value
         return out
+    
+    def init_random_parameters(self, seed=None, sigma=0.1):
+        epsilon = _np.zeros(self._epsilon.shape, dtype=self._npdtype)
+
+        if _rank == 0:
+            rgen = _np.random.default_rng(seed)
+            eps_shape = epsilon.shape
+            epsilon[:,:,:] += rgen.normal(scale=sigma, size=eps_shape)
+
+        if _n_nodes > 1:
+            _MPI_comm.Bcast(epsilon, root=0)
+            _MPI_comm.barrier()
+
+        self._epsilon = epsilon
