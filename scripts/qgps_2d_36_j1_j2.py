@@ -68,8 +68,10 @@ elif mode == 1:
     ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
 elif mode == 2:
     ma = nk.machine.QGPSSumSymExp(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-else:
+elif mode == 3:
     ma = nk.machine.QGPSProdSymExp(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
+else:
+    ma = nk.machine.QGPSPhaseSplitSumSymReg(hi, n_bond_amplitude=N, n_bond_phase=N, automorphisms=transl, spin_flip_sym=True)
 
 ma.init_random_parameters(sigma=0.1)
 
