@@ -828,6 +828,6 @@ class QGPSPhaseSplitSumSymReg(QGPSPhaseSplit):
                                         else:
                                             der *= epsilon[j, w, 1]
                                 out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * der
-                value += prefactor
+                value += _np.exp(-(argument_abs**2 + 1j*argument_phase**2))
             out[b, :] /= value
         return out
