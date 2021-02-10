@@ -833,7 +833,7 @@ class QGPSPhaseSplitSumSymReg(QGPSPhaseSplit):
         return out
     
     def init_random_parameters(self, seed=None, sigma=0.1):
-        epsilon = _np.zeros(self._epsilon.shape, dtype=self._npdtype)
+        epsilon = _np.ones(self._epsilon.shape, dtype=self._npdtype)
 
         if _rank == 0:
             rgen = _np.random.default_rng(seed)
