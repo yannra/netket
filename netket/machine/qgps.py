@@ -791,7 +791,7 @@ class QGPSPhaseSplitSumSymReg(QGPSPhaseSplit):
                 prefactor_phase = -2j*argument_abs*_np.exp(-(argument_abs**2 + 1j*argument_phase**2))
 
                 for w in range(epsilon.shape[1]):
-                    derivative = _np.complex128(-1.0)
+                    derivative = _np.complex128(1.0)
                     for i in range(Smap.shape[1]):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
                             derivative *= epsilon[i, w, 0]
