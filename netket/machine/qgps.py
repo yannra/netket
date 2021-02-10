@@ -724,3 +724,110 @@ class QGPSPhaseSplitProdSym(QGPSPhaseSplit):
                                     der *= 1.0j
                                 out[b, 2*epsilon.shape[1]*i + 2*w + 1] += der
         return out
+
+
+
+class QGPSPhaseSplitSumSymReg(QGPSPhaseSplit):
+    def __init__(self, hilbert, epsilon=None, n_bond_amplitude=None, n_bond_phase=None,
+                 automorphisms=None, spin_flip_sym=False, cluster_ids=None):
+        super().__init__(hilbert, epsilon=epsilon, n_bond_amplitude=n_bond_amplitude,
+                         n_bond_phase=n_bond_phase, automorphisms=automorphisms,
+                         spin_flip_sym=spin_flip_sym, cluster_ids=cluster_ids)
+
+    @staticmethod
+    @jit(nopython=True)
+    def _log_val_kernel(x, out, epsilon, n_bond_amplitude, Smap, symSign):
+        if out is None:
+            out = _np.empty(x.shape[0], dtype=_np.complex128)
+
+        for b in range(x.shape[0]):
+            out[b] = 0.0
+            for t in range(Smap.shape[0]):
+                arg_abs = _np.complex128(0.0)
+                arg_phase = _np.complex128(0.0)
+                for w in range(epsilon.shape[1]):
+                    innerprod = _np.complex128(1.0)
+                    for i in range(Smap.shape[1]):
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
+                            innerprod *= epsilon[i, w, 0]
+                        else:
+                            innerprod *= epsilon[i, w, 1]
+                    if w >= n_bond_amplitude:
+                        arg_phase += innerprod
+                    else:
+                        arg_abs += innerprod
+                out[b] += _np.exp(-(arg_abs**2+1j*arg_phase**2))
+            out[b] = _np.log(out[b])
+        return out
+
+    @staticmethod
+    @jit(nopython=True)
+    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap, symSign):
+        batch_size = x.shape[0]
+        eps = _np.finfo(_np.double).eps
+
+        if out is None:
+            out = _np.empty((batch_size, n_par), dtype=_np.complex128)
+
+        out.fill(0.0)
+
+        for b in range(batch_size):
+            value = _np.complex128(0.0)
+            for t in range(Smap.shape[0]):
+                argument_abs = _np.complex128(0.0)
+                argument_phase = _np.complex128(0.0)
+                for w in range(epsilon.shape[1]):
+                    innerargument = _np.complex128(1.0)
+                    for i in range(Smap.shape[1]):
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
+                            innerargument *= epsilon[i, w, 0]
+                        else:
+                            innerargument *= epsilon[i, w, 1]
+                    if w >= n_bond_amplitude:
+                        argument_phase += innerargument
+                    else:
+                        argument_abs += innerargument
+                prefactor_abs = -2*argument_abs*_np.exp(-(argument_abs**2 + 1j*argument_phase**2))
+                prefactor_phase = -2j*argument_abs*_np.exp(-(argument_abs**2 + 1j*argument_phase**2))
+
+                for w in range(epsilon.shape[1]):
+                    derivative = _np.complex128(-1.0)
+                    for i in range(Smap.shape[1]):
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
+                            derivative *= epsilon[i, w, 0]
+                        else:
+                            derivative *= epsilon[i, w, 1]
+                    if w >= n_bond_amplitude:
+                        prefactor = prefactor_phase
+                    else:
+                        prefactor = prefactor_abs
+                
+
+                    for i in range(Smap.shape[1]):
+                        if symSign[t] * x[b, Smap[t,i]] < 0:
+                            if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * derivative/epsilon[i, w, 0]
+                            else:
+                                der = _np.complex128(1.0)
+                                for j in range(Smap.shape[1]):
+                                    if j != i:
+                                        if symSign[t] * x[b, Smap[t,j]] < 0:
+                                            der *= epsilon[j, w, 0]
+                                        else:
+                                            der *= epsilon[j, w, 1]
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * der
+                        else:
+                            if _np.abs(epsilon[i, w, 1]) > 1.e6*eps:
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * derivative/epsilon[i, w, 1]
+                            else:
+                                der = _np.complex128(1.0)
+                                for j in range(Smap.shape[1]):
+                                    if j != i:
+                                        if symSign[t] * x[b, Smap[t,j]] < 0:
+                                            der *= epsilon[j, w, 0]
+                                        else:
+                                            der *= epsilon[j, w, 1]
+                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * der
+                value += prefactor
+            out[b, :] /= value
+        return out
