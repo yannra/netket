@@ -69,7 +69,7 @@ ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=Tru
 ma.init_random_parameters(sigma=1)
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.02)
+op = nk.optimizer.Sgd(ma, learning_rate=0.01)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
