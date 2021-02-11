@@ -81,7 +81,8 @@ class MetropolisHastings(AbstractSampler):
                 machine_pow * (log_values_1[i] - log_values[i] + log_prob_corr[i]).real
             )
             if math.isnan(prob):
-                print(log_values_1[i], log_values[i], flush=True)
+                with open("error_file.txt") as fl:
+                    fl.write("{} {} {} {}\n".format(log_values_1[i], log_values[i], state[i], state1[i]))
             assert not math.isnan(prob)
 
             if prob > _random.uniform(0, 1):
