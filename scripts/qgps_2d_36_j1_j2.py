@@ -82,6 +82,7 @@ op = nk.optimizer.Sgd(ma, learning_rate=0.02)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
+sa.reset(True)
 
 # Stochastic Reconfiguration
 sr = nk.optimizer.SR(ma)
@@ -113,10 +114,6 @@ for it in gs.iter(50,1):
 epsilon_avg /= 50
 
 ma._epsilon = epsilon_avg
-
-sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2)
-
-print(sa.generate_samples(10), flush=True)
 
 est = nk.variational.estimate_expectations(ha, sa, 50000, n_discard=100)
 
