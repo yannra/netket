@@ -39,16 +39,17 @@ for i in range(L):
         mats.append((-(J1/4) * exchange))
         sites.append([i * L + j, ((i+1)%L) * L + j])
 
-for i in range(L):
-    for j in range(L):
-        mats.append(((J2/4) * mszsz))
-        sites.append([i * L + j, ((i+1)%L) * L + (j+1)%L])
-        mats.append(((J2/4) * mszsz))
-        sites.append([i * L + j, ((i+1)%L) * L + (j-1)%L])
-        mats.append(((J2/4) * exchange))
-        sites.append([i * L + j, ((i+1)%L) * L + (j+1)%L])
-        mats.append(((J2/4) * exchange))
-        sites.append([i * L + j, ((i+1)%L) * L + (j-1)%L])
+if J2 != 0:
+    for i in range(L):
+        for j in range(L):
+            mats.append(((J2/4) * mszsz))
+            sites.append([i * L + j, ((i+1)%L) * L + (j+1)%L])
+            mats.append(((J2/4) * mszsz))
+            sites.append([i * L + j, ((i+1)%L) * L + (j-1)%L])
+            mats.append(((J2/4) * exchange))
+            sites.append([i * L + j, ((i+1)%L) * L + (j+1)%L])
+            mats.append(((J2/4) * exchange))
+            sites.append([i * L + j, ((i+1)%L) * L + (j-1)%L])
 
 
 # Spin based Hilbert Space
