@@ -66,14 +66,14 @@ for mat, site in zip(mats, sites):
 
 transl = symmetries.get_symms_square_lattice(L)
 
-ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, cluster_ids=cluster_ids, dtype=complex)
+ma = nk.machine.QGPSSumSymExp(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, cluster_ids=cluster_ids, dtype=complex)
 ma.init_random_parameters(sigma=1)
 
 old_cluster_edge = int(np.sqrt(epsilon_read_in.shape[0]))
 
 old_n_bond = min(epsilon_read_in.shape[1], ma._epsilon.shape[1])
 
-ma._epsilon[:,:old_n_bond, :] = 1
+ma._epsilon[:,:old_n_bond, :] = 0
 
 count = 0
 count_old = 0
@@ -89,14 +89,15 @@ op = nk.optimizer.Sgd(ma, learning_rate=0.02)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
+sa.reset(True)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma, diag_shift=0.02)
+sr = nk.optimizer.SR(ma)
 
 samples = 25000
 
 # Create the optimization driver
-gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
+gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=100)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
@@ -127,7 +128,6 @@ epsilon_avg /= 50
 
 ma._epsilon = epsilon_avg
 
-sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2,n_chains=1)
 est = nk.variational.estimate_expectations(ha, sa, 50000, n_discard=100)
 
 if mpi.COMM_WORLD.Get_rank() == 0:

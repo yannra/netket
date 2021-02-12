@@ -73,6 +73,7 @@ op = nk.optimizer.Sgd(ma, learning_rate=0.01)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
+sa.reset(True)
 
 # Stochastic Reconfiguration
 sr = nk.optimizer.SR(ma, diag_shift=0.05)
@@ -111,7 +112,6 @@ epsilon_avg /= 50
 
 ma._epsilon = epsilon_avg
 
-sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2,n_chains=1)
 est = nk.variational.estimate_expectations(ha, sa, 50000, n_discard=100)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
