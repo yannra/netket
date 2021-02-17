@@ -85,7 +85,7 @@ for i in range(cluster_edge):
         count += 1
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.0005)
+op = nk.optimizer.Sgd(ma, learning_rate=0.00005)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
