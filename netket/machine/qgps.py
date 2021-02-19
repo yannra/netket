@@ -946,3 +946,288 @@ class QGPSPhaseSplitSumSymAltReg(QGPSPhaseSplit):
             _MPI_comm.barrier()
 
         self._epsilon = epsilon
+
+
+
+class QGPSLinExp(AbstractMachine):
+    r"""
+    The QGPS ansatz.
+    """
+
+    def __init__(
+        self,
+        hilbert,
+        epsilon_lin=None,
+        epsilon_exp=None,
+        n_bond_lin=None,
+        n_bond_exp=None,
+        automorphisms=None,
+        spin_flip_sym=False,
+        cluster_ids=None,
+        dtype=float
+    ):
+        n = hilbert.size
+
+        if dtype is not float and dtype is not complex:
+            raise TypeError("dtype must be either float or complex")
+
+        self._dtype = dtype
+        self._npdtype = _np.complex128 if dtype is complex else _np.float64
+
+        if automorphisms is None:
+            self._Smap_exp = _np.zeros((1, n), dtype=_np.intp)
+            k = 0
+            for i in range(n):
+                self._Smap_exp[0, i] = k
+                k += 1
+
+        else:
+            if isinstance(automorphisms, AbstractGraph):
+                autom = _np.asarray(automorphisms.automorphisms())
+            else:
+                try:
+                    autom = _np.asarray(automorphisms)
+                    assert n == autom.shape[1]
+                except:
+                    raise RuntimeError("Cannot find a valid automorphism array.")
+
+            self._Smap_exp = autom
+
+        self._Smap_lin = self._Smap_exp.copy()
+        
+        if cluster_ids is not None:
+            self._Smap_exp = self._Smap_exp[:, cluster_ids]
+
+        self._sym_spin_flip_sign_exp = _np.ones(len(self._Smap_exp), dtype=_np.int8)
+        self._sym_spin_flip_sign_lin = _np.ones(len(self._Smap_lin), dtype=_np.int8)
+        if spin_flip_sym:
+            self._Smap_exp = _np.append(self._Smap_exp, self._Smap_exp, axis=0)
+            self._Smap_lin = _np.append(self._Smap_lin, self._Smap_lin, axis=0)
+            self._sym_spin_flip_sign_exp = _np.append(self._sym_spin_flip_sign_exp,
+                                                  -self._sym_spin_flip_sign_exp, axis=0)
+            self._sym_spin_flip_sign_lin = _np.append(self._sym_spin_flip_sign_lin,
+                                                      -self._sym_spin_flip_sign_lin, axis=0)
+        if epsilon_lin is None:
+            assert(n_bond_lin is not None)
+            self._epsilon_lin = _np.zeros((self._Smap_lin.shape[1], n_bond_lin, 2), dtype=self._npdtype)
+        else:
+            self._epsilon_lin = epsilon_lin.astype(self._npdtype)
+
+        if epsilon_exp is None:
+            assert(n_bond_exp is not None)
+            self._epsilon_exp = _np.zeros((self._Smap_exp.shape[1], n_bond_exp, 2), dtype=self._npdtype)
+        else:
+            self._epsilon_exp = epsilon_exp.astype(self._npdtype)
+
+        self._npar = self._epsilon_lin.size + self._epsilon_exp.size
+        self.value_time = 0
+        self.der_time = 0
+
+        super().__init__(hilbert, dtype=dtype)
+
+    @property
+    def n_par(self):
+        r"""The number of variational parameters in the machine."""
+        return self._npar
+    
+    def init_random_parameters(self, seed=None, sigma=0.1):
+        epsilon_lin = _np.zeros(self._epsilon_lin.shape, dtype=self._npdtype)
+        epsilon_exp = _np.ones(self._epsilon_exp.shape, dtype=self._npdtype)
+
+        if _rank == 0:
+            rgen = _np.random.default_rng(seed)
+            epsilon_lin += rgen.normal(scale=sigma, size=epsilon_lin.shape)
+            epsilon_exp += rgen.normal(scale=sigma, size=epsilon_exp.shape)
+            if self._dtype == complex:
+                epsilon_lin += 1j*rgen.normal(scale=sigma, size=epsilon_lin.shape)
+                epsilon_exp += 1j*rgen.normal(scale=sigma, size=epsilon_exp.shape)
+
+        epsilon_exp[0,:,:] = 0
+
+        if _n_nodes > 1:
+            _MPI_comm.Bcast(epsilon_lin, root=0)
+            _MPI_comm.Bcast(epsilon_exp, root=0)
+            _MPI_comm.barrier()
+
+        self._epsilon_lin = epsilon_lin
+        self._epsilon_exp = epsilon_exp
+
+    def log_val(self, x, out=None):
+        r"""Computes the logarithm of the wave function for a batch of visible
+        configurations `x` and stores the result into `out`.
+
+        Args:
+            x: A matrix of `float64` of shape `(*, self.n_visible)`.
+            out: Destination vector of `complex128`. The
+                 length of `out` should be `x.shape[0]`.
+
+        Returns:
+            A complex number when `x` is a vector and vector when `x` is a
+            matrix.
+        """
+        start = time.time()
+        val = self._log_val_kernel(x, out, self._epsilon_lin, self._epsilon_exp,
+                                   self._Smap_lin, self._Smap_exp, self._sym_spin_flip_sign_lin,
+                                   self._sym_spin_flip_sign_exp)
+        self.value_time += time.time() - start
+        return val
+
+    def der_log(self, x, out=None):
+        r"""Computes the gradient of the logarithm of the wavefunction for a
+        batch of visible configurations `x` and stores the result into `out`.
+
+        Args:
+            x: A matrix of `float64` of shape `(*, self.n_visible)`.
+            out: Destination tensor of `complex128`.
+                `out` should be a matrix of shape `(v.shape[0], self.n_par)`.
+
+        Returns:
+            `out`
+        """
+        start = time.time()
+        der = self._der_log_kernel(x, out, self._epsilon_lin, self._epsilon_exp, self._npar,
+                                   self._Smap_lin, self._Smap_exp, self._sym_spin_flip_sign_lin,
+                                   self._sym_spin_flip_sign_exp)
+        self.der_time += time.time() - start
+        return der
+
+    @property
+    def state_dict(self):
+        r"""A dictionary containing the parameters of this machine"""
+        from collections import OrderedDict
+
+        od = OrderedDict()
+        if self._dtype is complex:
+            od["epsilon_lin"] = self._epsilon_lin.view()
+            od["epsilon_exp"] = self._epsilon_exp.view()
+
+        else:
+            self._epsilonlinc = self._epsilon_lin.astype(_np.complex128)
+            self._epsilon_lin = self._epsilonlinc.real.view()
+            self._epsilonexpc = self._epsilon_exp.astype(_np.complex128)
+            self._epsilon_exp = self._epsilonexpc.real.view()
+            od["epsilon_lin"] = self._epsilonlinc.view()
+            od["epsilon_exp"] = self._epsilonexpc.view()
+
+        return od
+    
+    @staticmethod
+    @jit(nopython=True)
+    def _log_val_kernel(x, out, epsilon_lin, epsilon_exp, Smap_lin,
+                        Smap_exp, symSign_lin, symSign_exp):
+        if out is None:
+            out = _np.empty(x.shape[0], dtype=_np.complex128)
+
+        for b in range(x.shape[0]):
+            out[b] = 0.0
+            arg = _np.complex128(0.0)
+            if epsilon_lin.size > 0:
+                for t in range(Smap_lin.shape[0]):
+                    for w in range(epsilon_lin.shape[1]):
+                        innerprod = _np.complex128(1.0)
+                        for i in range(Smap_lin.shape[1]):
+                            if symSign_lin[t] * x[b, Smap_lin[t,i]] < 0:
+                                innerprod *= epsilon_lin[i, w, 0]
+                            else:
+                                innerprod *= epsilon_lin[i, w, 1]
+                        arg += innerprod
+                out[b] += _np.log(arg)
+
+            if epsilon_exp.size > 0:
+                for t in range(Smap_exp.shape[0]):
+                    for w in range(epsilon_exp.shape[1]):
+                        innerprod = _np.complex128(1.0)
+                        for i in range(Smap_exp.shape[1]):
+                            if symSign_exp[t] * x[b, Smap_exp[t,i]] < 0:
+                                innerprod *= epsilon_exp[i, w, 0]
+                            else:
+                                innerprod *= epsilon_exp[i, w, 1]
+                        out[b] += innerprod
+        return out
+
+    @staticmethod
+    @jit(nopython=True)
+    def _der_log_kernel(x, out, epsilon_lin, epsilon_exp, n_par, Smap_lin,
+                        Smap_exp, symSign_lin, symSign_exp):
+        batch_size = x.shape[0]
+        eps = _np.finfo(_np.double).eps
+
+        if out is None:
+            out = _np.empty((batch_size, n_par), dtype=_np.complex128)
+
+        out.fill(0.0)
+
+        for b in range(batch_size):
+            value = _np.complex128(0.0)
+            if epsilon_lin.size > 0:
+                for t in range(Smap_lin.shape[0]):
+                    for w in range(epsilon_lin.shape[1]):
+                        derivative = _np.complex128(1.0)
+                        for i in range(Smap_lin.shape[1]):
+                            if symSign_lin[t] * x[b, Smap_lin[t,i]] < 0:
+                                derivative *= epsilon_lin[i, w, 0]
+                            else:
+                                derivative *= epsilon_lin[i, w, 1]
+                        for i in range(Smap_lin.shape[1]):
+                            if symSign_lin[t] * x[b, Smap_lin[t,i]] < 0:
+                                if _np.abs(epsilon_lin[i, w, 0]) > 1.e6*eps:
+                                    out[b, 2*epsilon_lin.shape[1]*i + 2*w + 0] += derivative/epsilon_lin[i, w, 0]
+                                else:
+                                    der = _np.complex128(1.0)
+                                    for j in range(Smap_lin.shape[1]):
+                                        if j != i:
+                                            if symSign_lin[t] * x[b, Smap_lin[t,j]] < 0:
+                                                der *= epsilon_lin[j, w, 0]
+                                            else:
+                                                der *= epsilon_lin[j, w, 1]
+                                    out[b, 2*epsilon_lin.shape[1]*i + 2*w + 0] += der
+                            else:
+                                if _np.abs(epsilon_lin[i, w, 1]) > 1.e6*eps:
+                                    out[b, 2*epsilon_lin.shape[1]*i + 2*w + 1] += derivative/epsilon_lin[i, w, 1]
+                                else:
+                                    der = _np.complex128(1.0)
+                                    for j in range(Smap_lin.shape[1]):
+                                        if j != i:
+                                            if symSign_lin[t] * x[b, Smap_lin[t,j]] < 0:
+                                                der *= epsilon_lin[j, w, 0]
+                                            else:
+                                                der *= epsilon_lin[j, w, 1]
+                                    out[b, 2*epsilon_lin.shape[1]*i + 2*w + 1] += der
+                        value += derivative
+                for i in range(epsilon_lin.size):
+                    out[b, i] /= value
+            if epsilon_exp.size > 0:
+                for t in range(Smap_exp.shape[0]):
+                    for w in range(epsilon_exp.shape[1]):
+                        derivative = _np.complex128(1.0)
+                        for i in range(Smap_exp.shape[1]):
+                            if symSign_exp[t] * x[b, Smap_exp[t,i]] < 0:
+                                derivative *= epsilon_exp[i, w, 0]
+                            else:
+                                derivative *= epsilon_exp[i, w, 1]
+                        for i in range(Smap_exp.shape[1]):
+                            if symSign_exp[t] * x[b, Smap_exp[t,i]] < 0:
+                                if _np.abs(epsilon_exp[i, w, 0]) > 1.e6*eps:
+                                    out[b, epsilon_lin.size + 2*epsilon_exp.shape[1]*i + 2*w + 0] += derivative/epsilon_exp[i, w, 0]
+                                else:
+                                    der = _np.complex128(1.0)
+                                    for j in range(Smap_exp.shape[1]):
+                                        if j != i:
+                                            if symSign_exp[t] * x[b, Smap_exp[t,j]] < 0:
+                                                der *= epsilon_exp[j, w, 0]
+                                            else:
+                                                der *= epsilon_exp[j, w, 1]
+                                    out[b, epsilon_lin.size + 2*epsilon_exp.shape[1]*i + 2*w + 0] += der
+                            else:
+                                if _np.abs(epsilon_exp[i, w, 1]) > 1.e6*eps:
+                                    out[b, epsilon_lin.size + 2*epsilon_exp.shape[1]*i + 2*w + 1] += derivative/epsilon_exp[i, w, 1]
+                                else:
+                                    der = _np.complex128(1.0)
+                                    for j in range(Smap_exp.shape[1]):
+                                        if j != i:
+                                            if symSign_exp[t] * x[b, Smap_exp[t,j]] < 0:
+                                                der *= epsilon_exp[j, w, 0]
+                                            else:
+                                                der *= epsilon_exp[j, w, 1]
+                                    out[b, epsilon_lin.size + 2*epsilon_exp.shape[1]*i + 2*w + 1] += der
+        return out
