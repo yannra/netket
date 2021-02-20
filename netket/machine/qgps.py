@@ -1031,7 +1031,7 @@ class QGPSLinExp(AbstractMachine):
         return self._npar
     
     def init_random_parameters(self, seed=None, sigma=0.1):
-        epsilon_lin = _np.zeros(self._epsilon_lin.shape, dtype=self._npdtype)
+        epsilon_lin = _np.ones(self._epsilon_lin.shape, dtype=self._npdtype)
         epsilon_exp = _np.ones(self._epsilon_exp.shape, dtype=self._npdtype)
 
         if _rank == 0:
