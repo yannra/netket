@@ -87,35 +87,45 @@ if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
         fl.write("")
 
-np.save("epsilon.npy", ma._epsilon)
+np.save("epsilon_lin.npy", ma._epsilon_lin)
+np.save("epsilon_exp.npy", ma._epsilon_exp)
 
 for it in gs.iter(1950,1):
     if mpi.COMM_WORLD.Get_rank() == 0:
-        move("epsilon.npy", "epsilon_old.npy")
-        np.save("epsilon.npy", ma._epsilon)
+        move("epsilon_lin.npy", "epsilon_lin_old.npy")
+        move("epsilon_exp.npy", "epsilon_exp_old.npy")
+        np.save("epsilon_lin.npy", ma._epsilon_lin)
+        np.save("epsilon_exp.npy", ma._epsilon_exp)
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
 
-epsilon_avg = np.zeros(ma._epsilon.shape, dtype=ma._epsilon.dtype)
+epsilon_lin_avg = np.zeros(ma._epsilon_lin.shape, dtype=ma._epsilon_lin.dtype)
+epsilon_exp_avg = np.zeros(ma._epsilon_exp.shape, dtype=ma._epsilon_exp.dtype)
 
 for it in gs.iter(50,1):
-    epsilon_avg += ma._epsilon
+    epsilon_lin_avg += ma._epsilon_lin
+    epsilon_exp_avg += ma._epsilon_exp
     if mpi.COMM_WORLD.Get_rank() == 0:
-        move("epsilon.npy", "epsilon_old.npy")
-        np.save("epsilon.npy", ma._epsilon)
+        move("epsilon_lin.npy", "epsilon_lin_old.npy")
+        move("epsilon_exp.npy", "epsilon_exp_old.npy")
+        np.save("epsilon_lin.npy", ma._epsilon_lin)
+        np.save("epsilon_exp.npy", ma._epsilon_exp)
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
 
-epsilon_avg /= 50
+epsilon_lin_avg /= 50
+epsilon_exp_avg /= 50
 
-ma._epsilon = epsilon_avg
+ma._epsilon_lin = epsilon_lin_avg
+ma._epsilon_exp = epsilon_exp_avg
 
 est = nk.variational.estimate_expectations(ha, sa, 50000, n_discard=100)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
-    np.save("epsilon_avg.npy", ma._epsilon)
+    np.save("epsilon_lin_avg.npy", ma._epsilon_lin)
+    np.save("epsilon_exp_avg.npy", ma._epsilon_exp)
     with open("result.txt", "a") as fl:
         fl.write("{}  {}  {}  {}\n".format(N, np.real(est.mean), np.imag(est.mean), est.error_of_mean))
 
