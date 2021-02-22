@@ -1031,8 +1031,8 @@ class QGPSLinExp(AbstractMachine):
         return self._npar
     
     def init_random_parameters(self, seed=None, sigma=0.1):
-        epsilon_lin = _np.ones(self._epsilon_lin.shape, dtype=self._npdtype)
-        epsilon_exp = _np.ones(self._epsilon_exp.shape, dtype=self._npdtype)
+        epsilon_lin = _np.zeros(self._epsilon_lin.shape, dtype=self._npdtype)
+        epsilon_exp = _np.zeros(self._epsilon_exp.shape, dtype=self._npdtype)
 
         if _rank == 0:
             rgen = _np.random.default_rng(seed)
@@ -1041,8 +1041,12 @@ class QGPSLinExp(AbstractMachine):
             if self._dtype == complex:
                 epsilon_lin += 1j*rgen.normal(scale=sigma, size=epsilon_lin.shape)
                 epsilon_exp += 1j*rgen.normal(scale=sigma, size=epsilon_exp.shape)
-
-        epsilon_exp[0,:,:] = 0
+            for i in range(epsilon_lin.shape[0]):
+                for j in range(epsilon_lin.shape[1]):
+                    epsilon_lin[i, j, :] /= _np.max(abs(epsilon_lin[i, j, :]))
+            for i in range(epsilon_exp.shape[0]):
+                for j in range(epsilon_exp.shape[1]):
+                    epsilon_exp[i, j, :] /= _np.max(abs(epsilon_exp[i, j, :]))
 
         if _n_nodes > 1:
             _MPI_comm.Bcast(epsilon_lin, root=0)
