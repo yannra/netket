@@ -96,6 +96,24 @@ class QGPS(AbstractMachine):
             _MPI_comm.barrier()
 
         self._epsilon = epsilon
+    
+    def init_random_parameters_alt(self, seed=None, sigma=0.1):
+        epsilon = _np.zeros(self._epsilon.shape, dtype=self._npdtype)
+
+        if _rank == 0:
+            rgen = _np.random.default_rng(seed)
+            epsilon += rgen.normal(scale=sigma, size=epsilon.shape)
+            if self._dtype == complex:
+                epsilon += 1j*rgen.normal(scale=sigma, size=epsilon.shape)
+            for i in range(epsilon.shape[0]):
+                for j in range(epsilon.shape[1]):
+                    epsilon[i, j, :] /= _np.max(abs(epsilon[i, j, :]))
+
+        if _n_nodes > 1:
+            _MPI_comm.Bcast(epsilon, root=0)
+            _MPI_comm.barrier()
+
+        self._epsilon = epsilon
 
     def log_val(self, x, out=None):
         r"""Computes the logarithm of the wave function for a batch of visible
