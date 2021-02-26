@@ -68,18 +68,20 @@ class QGPS(AbstractMachine):
         else:
             self._epsilon = epsilon.astype(self._npdtype)
 
-        self._npar = self._epsilon.size
         self.value_time = 0
         self.der_time = 0
+        self._der_ids = _np.array(range(self._epsilon.size)).reshape(self._epsilon.shape)
+        self._opt_params = self._epsilon[self._der_ids >= 0].copy()
+        self._npar = self._opt_params.size
 
         super().__init__(hilbert, dtype=dtype)
 
     @property
     def n_par(self):
         r"""The number of variational parameters in the machine."""
-        return self._npar
+        return self._opt_params.size
     
-    def init_random_parameters(self, seed=None, sigma=0.1, random_sign=False):
+    def init_random_parameters(self, seed=None, sigma=0.1, start_from_uniform=True):
         epsilon = _np.ones(self._epsilon.shape, dtype=self._npdtype)
 
         if _rank == 0:
@@ -87,16 +89,30 @@ class QGPS(AbstractMachine):
             epsilon += rgen.normal(scale=sigma, size=epsilon.shape)
             if self._dtype == complex:
                 epsilon += 1j*rgen.normal(scale=sigma, size=epsilon.shape)
-            epsilon[0,:,:] = 0.0
-            if random_sign:
-                epsilon *= (2*rgen.integers(0,2,size=epsilon.shape)-1)
+            if start_from_uniform:
+                epsilon[0,:,:] = 0.0
 
         if _n_nodes > 1:
             _MPI_comm.Bcast(epsilon, root=0)
             _MPI_comm.barrier()
 
         self._epsilon = epsilon
+        self._opt_params = self._epsilon[self._der_ids >= 0].copy()
     
+    def change_opt_ids(self, opt_ids):
+        # TODO improve this
+        count = 0
+        for i in range(opt_ids.shape[0]):
+            for j in range(opt_ids.shape[1]):
+                for k in range(opt_ids.shape[2]):
+                    if opt_ids[i,j,k]:
+                        self._der_ids[i,j,k] = count
+                        count += 1
+                    else:
+                        self._der_ids[i,j,k] = -1
+        self._opt_params = self._epsilon[self._der_ids >= 0].copy()
+        self._npar = self._opt_params.size
+
     def init_random_parameters_alt(self, seed=None, sigma=0.1):
         epsilon = _np.zeros(self._epsilon.shape, dtype=self._npdtype)
 
@@ -114,6 +130,7 @@ class QGPS(AbstractMachine):
             _MPI_comm.barrier()
 
         self._epsilon = epsilon
+        self._opt_params = self._epsilon[self._der_ids >= 0].copy()
 
     def log_val(self, x, out=None):
         r"""Computes the logarithm of the wave function for a batch of visible
@@ -129,6 +146,7 @@ class QGPS(AbstractMachine):
             matrix.
         """
         start = time.time()
+        self._epsilon[self._der_ids >= 0] = self._opt_params
         val = self._log_val_kernel(x, out, self._epsilon, self._Smap, self._sym_spin_flip_sign)
         self.value_time += time.time() - start
         return val
@@ -146,7 +164,8 @@ class QGPS(AbstractMachine):
             `out`
         """
         start = time.time()
-        der = self._der_log_kernel(x, out, self._epsilon, self._npar, self._Smap, self._sym_spin_flip_sign)
+        self._epsilon[self._der_ids >= 0] = self._opt_params
+        der = self._der_log_kernel(x, out, self._epsilon, self._npar, self._Smap, self._sym_spin_flip_sign, self._der_ids)
         self.der_time += time.time() - start
         return der
 
@@ -157,12 +176,12 @@ class QGPS(AbstractMachine):
 
         od = OrderedDict()
         if self._dtype is complex:
-            od["epsilon"] = self._epsilon.view()
+            od["epsilon_opt"] = self._opt_params.view()
 
         else:
-            self._epsilonc = self._epsilon.astype(_np.complex128)
-            self._epsilon = self._epsilonc.real.view()
-            od["epsilon"] = self._epsilonc.view()
+            self._opt_paramsc = self._opt_params.astype(_np.complex128)
+            self._opt_params = self._opt_paramsc.real.view()
+            od["epsilon_opt"] = self._opt_paramsc.view()
 
         return od
     
@@ -198,7 +217,7 @@ class QGPSSumSym(QGPS):
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_par, Smap, symSign):
+    def _der_log_kernel(x, out, epsilon, n_par, Smap, symSign, der_ids):
         batch_size = x.shape[0]
         eps = _np.finfo(_np.double).eps
 
@@ -230,29 +249,31 @@ class QGPSSumSym(QGPS):
                             derivative *= epsilon[i, w, 1]
                     for i in range(Smap.shape[1]):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
-                            if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * derivative/epsilon[i, w, 0]
-                            else:
-                                der = _np.complex128(1.0)
-                                for j in range(Smap.shape[1]):
-                                    if j != i:
-                                        if symSign[t] * x[b, Smap[t,j]] < 0:
-                                            der *= epsilon[j, w, 0]
-                                        else:
-                                            der *= epsilon[j, w, 1]
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * der
+                            if der_ids[i, w, 0] >= 0:
+                                if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
+                                    out[b, der_ids[i, w, 0]] += prefactor * derivative/epsilon[i, w, 0]
+                                else:
+                                    der = _np.complex128(1.0)
+                                    for j in range(Smap.shape[1]):
+                                        if j != i:
+                                            if symSign[t] * x[b, Smap[t,j]] < 0:
+                                                der *= epsilon[j, w, 0]
+                                            else:
+                                                der *= epsilon[j, w, 1]
+                                    out[b, der_ids[i, w, 0]] += prefactor * der
                         else:
-                            if _np.abs(epsilon[i, w, 1]) > 1.e6*eps:
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * derivative/epsilon[i, w, 1]
-                            else:
-                                der = _np.complex128(1.0)
-                                for j in range(Smap.shape[1]):
-                                    if j != i:
-                                        if symSign[t] * x[b, Smap[t,j]] < 0:
-                                            der *= epsilon[j, w, 0]
-                                        else:
-                                            der *= epsilon[j, w, 1]
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * der
+                            if der_ids[i, w, 1] >= 0:
+                                if _np.abs(epsilon[i, w, 1]) > 1.e6*eps:
+                                    out[b, der_ids[i, w, 1]] += prefactor * derivative/epsilon[i, w, 1]
+                                else:
+                                    der = _np.complex128(1.0)
+                                    for j in range(Smap.shape[1]):
+                                        if j != i:
+                                            if symSign[t] * x[b, Smap[t,j]] < 0:
+                                                der *= epsilon[j, w, 0]
+                                            else:
+                                                der *= epsilon[j, w, 1]
+                                    out[b, der_ids[i, w, 1]] += prefactor * der
                 value += prefactor
             out[b, :] /= value
         return out
@@ -286,7 +307,7 @@ class QGPSProdSym(QGPS):
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_par, Smap, symSign):
+    def _der_log_kernel(x, out, epsilon, n_par, Smap, symSign, der_ids):
         batch_size = x.shape[0]
         eps = _np.finfo(_np.double).eps
 
@@ -306,29 +327,31 @@ class QGPSProdSym(QGPS):
                             derivative *= epsilon[i, w, 1]
                     for i in range(Smap.shape[1]):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
-                            if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += derivative/epsilon[i, w, 0]
-                            else:
-                                der = _np.complex128(1.0)
-                                for j in range(Smap.shape[1]):
-                                    if j != i:
-                                        if symSign[t] * x[b, Smap[t,j]] < 0:
-                                            der *= epsilon[j, w, 0]
-                                        else:
-                                            der *= epsilon[j, w, 1]
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += der
+                            if der_ids[i, w, 0] >= 0:
+                                if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
+                                    out[b, der_ids[i, w, 0]] += derivative/epsilon[i, w, 0]
+                                else:
+                                    der = _np.complex128(1.0)
+                                    for j in range(Smap.shape[1]):
+                                        if j != i:
+                                            if symSign[t] * x[b, Smap[t,j]] < 0:
+                                                der *= epsilon[j, w, 0]
+                                            else:
+                                                der *= epsilon[j, w, 1]
+                                    out[b, der_ids[i, w, 0]] += der
                         else:
-                            if _np.abs(epsilon[i, w, 1]) > 1.e6*eps:
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += derivative/epsilon[i, w, 1]
-                            else:
-                                der = _np.complex128(1.0)
-                                for j in range(Smap.shape[1]):
-                                    if j != i:
-                                        if symSign[t] * x[b, Smap[t,j]] < 0:
-                                            der *= epsilon[j, w, 0]
-                                        else:
-                                            der *= epsilon[j, w, 1]
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += der
+                            if der_ids[i, w, 1] >= 0:
+                                if _np.abs(epsilon[i, w, 1]) > 1.e6*eps:
+                                    out[b, der_ids[i, w, 1]] += derivative/epsilon[i, w, 1]
+                                else:
+                                    der = _np.complex128(1.0)
+                                    for j in range(Smap.shape[1]):
+                                        if j != i:
+                                            if symSign[t] * x[b, Smap[t,j]] < 0:
+                                                der *= epsilon[j, w, 0]
+                                            else:
+                                                der *= epsilon[j, w, 1]
+                                    out[b, der_ids[i, w, 1]] += der
         return out
 
 
@@ -385,7 +408,7 @@ class QGPSSumSymExp(QGPSExp):
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_par, Smap, symSign):
+    def _der_log_kernel(x, out, epsilon, n_par, Smap, symSign, der_ids):
         batch_size = x.shape[0]
 
         if out is None:
@@ -416,9 +439,11 @@ class QGPSSumSymExp(QGPSExp):
                             arg += epsilon[i, w, 1]
                     for i in range(Smap.shape[1]):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
-                            out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * _np.exp(arg)
+                            if der_ids[i, w, 0] >= 0:
+                                out[b, der_ids[i, w, 0]] += prefactor * _np.exp(arg)
                         else:
-                            out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * _np.exp(arg)
+                            if der_ids[i, w, 1] >= 0:
+                                out[b, der_ids[i, w, 1]] += prefactor * _np.exp(arg)
                 value += prefactor
             out[b, :] /= value
         return out
@@ -452,7 +477,7 @@ class QGPSProdSymExp(QGPSExp):
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_par, Smap, symSign):
+    def _der_log_kernel(x, out, epsilon, n_par, Smap, symSign, der_ids):
         batch_size = x.shape[0]
 
         if out is None:
@@ -471,9 +496,11 @@ class QGPSProdSymExp(QGPSExp):
                             derivative += epsilon[i, w, 1]
                     for i in range(Smap.shape[1]):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
-                            out[b, 2*epsilon.shape[1]*i + 2*w + 0] += _np.exp(derivative)
+                            if der_ids[i, w, 0] >= 0:
+                                out[b, der_ids[i, w, 0]] += _np.exp(derivative)
                         else:
-                            out[b, 2*epsilon.shape[1]*i + 2*w + 1] += _np.exp(derivative)
+                            if der_ids[i, w, 1] >= 0:
+                                out[b, der_ids[i, w, 1]] += _np.exp(derivative)
         return out
 
 
@@ -534,7 +561,7 @@ class QGPSPhaseSplit(QGPS):
         """
         start = time.time()
         der = self._der_log_kernel(x, out, self._epsilon, self.n_bond_amplitude,
-                                   self._npar, self._Smap, self._sym_spin_flip_sign)
+                                   self._npar, self._Smap, self._sym_spin_flip_sign, self._der_ids)
         self.der_time += time.time() - start
         return der
     
@@ -591,7 +618,7 @@ class QGPSPhaseSplitSumSym(QGPSPhaseSplit):
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap, symSign):
+    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap, symSign, der_ids):
         batch_size = x.shape[0]
         eps = _np.finfo(_np.double).eps
 
@@ -629,33 +656,35 @@ class QGPSPhaseSplitSumSym(QGPSPhaseSplit):
 
                     for i in range(Smap.shape[1]):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
-                            if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * derivative/epsilon[i, w, 0]
-                            else:
-                                der = _np.complex128(1.0)
-                                for j in range(Smap.shape[1]):
-                                    if j != i:
-                                        if symSign[t] * x[b, Smap[t,j]] < 0:
-                                            der *= epsilon[j, w, 0]
-                                        else:
-                                            der *= epsilon[j, w, 1]
-                                if w >= n_bond_amplitude:
-                                    der *= 1.0j
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * der
+                            if der_ids[i, w, 0] >= 0:
+                                if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
+                                    out[b, der_ids[i, w, 0]] += prefactor * derivative/epsilon[i, w, 0]
+                                else:
+                                    der = _np.complex128(1.0)
+                                    for j in range(Smap.shape[1]):
+                                        if j != i:
+                                            if symSign[t] * x[b, Smap[t,j]] < 0:
+                                                der *= epsilon[j, w, 0]
+                                            else:
+                                                der *= epsilon[j, w, 1]
+                                    if w >= n_bond_amplitude:
+                                        der *= 1.0j
+                                    out[b, der_ids[i, w, 0]] += prefactor * der
                         else:
-                            if _np.abs(epsilon[i, w, 1]) > 1.e6*eps:
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * derivative/epsilon[i, w, 1]
-                            else:
-                                der = _np.complex128(1.0)
-                                for j in range(Smap.shape[1]):
-                                    if j != i:
-                                        if symSign[t] * x[b, Smap[t,j]] < 0:
-                                            der *= epsilon[j, w, 0]
-                                        else:
-                                            der *= epsilon[j, w, 1]
-                                if w >= n_bond_amplitude:
-                                    der *= 1.0j
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * der
+                            if der_ids[i, w, 1] >= 0:
+                                if _np.abs(epsilon[i, w, 1]) > 1.e6*eps:
+                                    out[b, der_ids[i, w, 1]] += prefactor * derivative/epsilon[i, w, 1]
+                                else:
+                                    der = _np.complex128(1.0)
+                                    for j in range(Smap.shape[1]):
+                                        if j != i:
+                                            if symSign[t] * x[b, Smap[t,j]] < 0:
+                                                der *= epsilon[j, w, 0]
+                                            else:
+                                                der *= epsilon[j, w, 1]
+                                    if w >= n_bond_amplitude:
+                                        der *= 1.0j
+                                    out[b, der_ids[i, w, 1]] += prefactor * der
                 value += prefactor
             out[b, :] /= value
         return out
@@ -691,7 +720,7 @@ class QGPSPhaseSplitProdSym(QGPSPhaseSplit):
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap, symSign):
+    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap, symSign, der_ids):
         batch_size = x.shape[0]
         eps = _np.finfo(_np.double).eps
 
@@ -714,33 +743,35 @@ class QGPSPhaseSplitProdSym(QGPSPhaseSplit):
 
                     for i in range(Smap.shape[1]):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
-                            if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += derivative/epsilon[i, w, 0]
-                            else:
-                                der = _np.complex128(1.0)
-                                for j in range(Smap.shape[1]):
-                                    if j != i:
-                                        if symSign[t] * x[b, Smap[t,j]] < 0:
-                                            der *= epsilon[j, w, 0]
-                                        else:
-                                            der *= epsilon[j, w, 1]
-                                if w >= n_bond_amplitude:
-                                    der *= 1.0j
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += der
+                            if der_ids[i, w, 0] >= 0:
+                                if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
+                                    out[b, der_ids[i, w, 0]] += derivative/epsilon[i, w, 0]
+                                else:
+                                    der = _np.complex128(1.0)
+                                    for j in range(Smap.shape[1]):
+                                        if j != i:
+                                            if symSign[t] * x[b, Smap[t,j]] < 0:
+                                                der *= epsilon[j, w, 0]
+                                            else:
+                                                der *= epsilon[j, w, 1]
+                                    if w >= n_bond_amplitude:
+                                        der *= 1.0j
+                                    out[b, der_ids[i, w, 0]] += der
                         else:
-                            if _np.abs(epsilon[i, w, 1]) > 1.e6*eps:
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += derivative/epsilon[i, w, 1]
-                            else:
-                                der = _np.complex128(1.0)
-                                for j in range(Smap.shape[1]):
-                                    if j != i:
-                                        if symSign[t] * x[b, Smap[t,j]] < 0:
-                                            der *= epsilon[j, w, 0]
-                                        else:
-                                            der *= epsilon[j, w, 1]
-                                if w >= n_bond_amplitude:
-                                    der *= 1.0j
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += der
+                            if der_ids[i, w, 1] >= 0:
+                                if _np.abs(epsilon[i, w, 1]) > 1.e6*eps:
+                                    out[b, der_ids[i, w, 1]] += derivative/epsilon[i, w, 1]
+                                else:
+                                    der = _np.complex128(1.0)
+                                    for j in range(Smap.shape[1]):
+                                        if j != i:
+                                            if symSign[t] * x[b, Smap[t,j]] < 0:
+                                                der *= epsilon[j, w, 0]
+                                            else:
+                                                der *= epsilon[j, w, 1]
+                                    if w >= n_bond_amplitude:
+                                        der *= 1.0j
+                                    out[b, der_ids[i, w, 1]] += der
         return out
 
 
@@ -780,7 +811,7 @@ class QGPSPhaseSplitSumSymReg(QGPSPhaseSplit):
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap, symSign):
+    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap, symSign, der_ids):
         batch_size = x.shape[0]
         eps = _np.finfo(_np.double).eps
 
@@ -823,29 +854,31 @@ class QGPSPhaseSplitSumSymReg(QGPSPhaseSplit):
 
                     for i in range(Smap.shape[1]):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
-                            if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * derivative/epsilon[i, w, 0]
-                            else:
-                                der = _np.complex128(1.0)
-                                for j in range(Smap.shape[1]):
-                                    if j != i:
-                                        if symSign[t] * x[b, Smap[t,j]] < 0:
-                                            der *= epsilon[j, w, 0]
-                                        else:
-                                            der *= epsilon[j, w, 1]
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * der
+                            if der_ids[i, w, 0] >= 0:
+                                if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
+                                    out[b, der_ids[i, w, 0]] += prefactor * derivative/epsilon[i, w, 0]
+                                else:
+                                    der = _np.complex128(1.0)
+                                    for j in range(Smap.shape[1]):
+                                        if j != i:
+                                            if symSign[t] * x[b, Smap[t,j]] < 0:
+                                                der *= epsilon[j, w, 0]
+                                            else:
+                                                der *= epsilon[j, w, 1]
+                                    out[b, der_ids[i, w, 0]] += prefactor * der
                         else:
-                            if _np.abs(epsilon[i, w, 1]) > 1.e6*eps:
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * derivative/epsilon[i, w, 1]
-                            else:
-                                der = _np.complex128(1.0)
-                                for j in range(Smap.shape[1]):
-                                    if j != i:
-                                        if symSign[t] * x[b, Smap[t,j]] < 0:
-                                            der *= epsilon[j, w, 0]
-                                        else:
-                                            der *= epsilon[j, w, 1]
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * der
+                            if der_ids[i, w, 1] >= 0:
+                                if _np.abs(epsilon[i, w, 1]) > 1.e6*eps:
+                                    out[b, der_ids[i, w, 1]] += prefactor * derivative/epsilon[i, w, 1]
+                                else:
+                                    der = _np.complex128(1.0)
+                                    for j in range(Smap.shape[1]):
+                                        if j != i:
+                                            if symSign[t] * x[b, Smap[t,j]] < 0:
+                                                der *= epsilon[j, w, 0]
+                                            else:
+                                                der *= epsilon[j, w, 1]
+                                    out[b, der_ids[i, w, 1]] += prefactor * der
                 value += _np.exp(-(argument_abs**2 + 1j*argument_phase**2))
             out[b, :] /= value
         return out
@@ -900,7 +933,7 @@ class QGPSPhaseSplitSumSymAltReg(QGPSPhaseSplit):
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap, symSign):
+    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap, symSign, der_ids):
         batch_size = x.shape[0]
         eps = _np.finfo(_np.double).eps
 
@@ -942,11 +975,13 @@ class QGPSPhaseSplitSumSymAltReg(QGPSPhaseSplit):
 
                     for i in range(Smap.shape[1]):
                         if symSign[t] * x[b, Smap[t,i]] < 0:
-                            if _np.abs(epsilon[i, w, 0]) > 1.e2*eps:
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 0] += prefactor * (derivative**2)/epsilon[i, w, 0]
+                            if der_ids[i, w, 0] >= 0:
+                                if _np.abs(epsilon[i, w, 0]) > 1.e2*eps:
+                                    out[b, der_ids[i, w, 0]] += prefactor * (derivative**2)/epsilon[i, w, 0]
                         else:
-                            if _np.abs(epsilon[i, w, 1]) > 1.e2*eps:
-                                out[b, 2*epsilon.shape[1]*i + 2*w + 1] += prefactor * (derivative**2)/epsilon[i, w, 1]
+                            if der_ids[i, w, 1] >= 0:
+                                if _np.abs(epsilon[i, w, 1]) > 1.e2*eps:
+                                    out[b, der_ids[i, w, 1]] += prefactor * (derivative**2)/epsilon[i, w, 1]
                 value += _np.exp(-(argument_abs + 1j*argument_phase))
             out[b, :] /= value
         return out
