@@ -6,7 +6,8 @@ import mpi4py.MPI as mpi
 import symmetries
 
 N = int(sys.argv[1])
-J2 = float(sys.argv[2])
+opt_par = int(sys.argv[2])
+J2 = float(sys.argv[3])
 
 J1 = 1.0
 
@@ -60,8 +61,8 @@ for mat, site in zip(mats, sites):
 
 transl = symmetries.get_symms_square_lattice(L)
 
-ma = nk.machine.QGPSSumSymExp(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-ma.init_random_parameters()
+ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
+ma.init_random_parameters(start_from_uniform=False)
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.01)
@@ -73,10 +74,25 @@ sa.reset(True)
 # Stochastic Reconfiguration
 sr = nk.optimizer.SR(ma, lsq_solver="cg")
 
+arr = np.zeros(ma._epsilon.size, dtype=bool)
+arr[:opt_par] = True
+
+class PartialOpt(nk.Vmc):
+    def iter(self, n_steps, step=1):
+        for _ in range(0, n_steps, step):
+            for i in range(0, step):
+                np.random.shuffle(arr)
+                ma.change_opt_ids(arr.reshape(ma._epsilon.shape))
+                dp = self._forward_and_backward()
+                self.update_parameters(dp)
+                if i == 0:
+                    yield self.step_count
+
+
 samples = 15000
 
 # Create the optimization driver
-gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
+gs = PartialOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
