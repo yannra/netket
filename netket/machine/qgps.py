@@ -146,7 +146,6 @@ class QGPS(AbstractMachine):
             matrix.
         """
         start = time.time()
-        self._epsilon[self._der_ids >= 0] = self._opt_params
         val = self._log_val_kernel(x, out, self._epsilon, self._Smap, self._sym_spin_flip_sign)
         self.value_time += time.time() - start
         return val
@@ -164,7 +163,6 @@ class QGPS(AbstractMachine):
             `out`
         """
         start = time.time()
-        self._epsilon[self._der_ids >= 0] = self._opt_params
         der = self._der_log_kernel(x, out, self._epsilon, self._npar, self._Smap, self._sym_spin_flip_sign, self._der_ids)
         self.der_time += time.time() - start
         return der
@@ -184,6 +182,24 @@ class QGPS(AbstractMachine):
             od["epsilon_opt"] = self._opt_paramsc.view()
 
         return od
+
+    # TODO: Clean this up
+    @property
+    def parameters(self):
+        return _np.concatenate(tuple(p.reshape(-1) for p in self.state_dict.values()))
+
+    @parameters.setter
+    def parameters(self, p):
+        if p.shape != (self.n_par,):
+            raise ValueError(
+                "p has wrong shape: {}; expected ({},)".format(p.shape, self.n_par)
+            )
+
+        i = 0
+        for x in map(lambda x: x.reshape(-1), self.state_dict.values()):
+            _np.copyto(x, p[i : i + x.size])
+            i += x.size
+        self._epsilon[self._der_ids >= 0] = self._opt_params
     
 
 class QGPSSumSym(QGPS):
