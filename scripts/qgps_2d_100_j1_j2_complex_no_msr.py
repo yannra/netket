@@ -60,7 +60,7 @@ for mat, site in zip(mats, sites):
 
 transl = symmetries.get_symms_square_lattice(L)
 
-ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
+ma = nk.machine.QGPSSumSymExp(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
 ma.init_random_parameters()
 
 # Optimizer
