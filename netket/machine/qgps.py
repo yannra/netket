@@ -380,7 +380,7 @@ class QGPSExp(QGPS):
                          automorphisms=automorphisms, spin_flip_sym=spin_flip_sym,
                          cluster_ids=cluster_ids, dtype=dtype)
 
-    def init_random_parameters(self, seed=None, sigma=0.1):
+    def init_random_parameters(self, seed=None, sigma=1):
         epsilon = _np.zeros(self._epsilon.shape, dtype=self._npdtype)
 
         if _rank == 0:
@@ -394,6 +394,7 @@ class QGPSExp(QGPS):
             _MPI_comm.barrier()
 
         self._epsilon = epsilon
+        self._opt_params = self._epsilon[self._der_ids >= 0].copy()
 
 
 class QGPSSumSymExp(QGPSExp):
