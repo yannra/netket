@@ -65,6 +65,7 @@ ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=Tru
 ma.init_random_parameters(sigma=0.1, start_from_uniform=False)
 
 ma._epsilon[3:,:,:] = 1.0
+ma._epsilon[:3,:,:] -= 1.0
 ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
 
 # Optimizer
