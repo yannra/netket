@@ -61,12 +61,12 @@ for mat, site in zip(mats, sites):
 
 transl = symmetries.get_symms_square_lattice(L)
 
-ma = nk.machine.QGPSSumSymExp(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-ma.init_random_parameters(sigma=2.5)
+ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
+ma.init_random_parameters(sigma=0.08)
 
-for i in range(L**2):
-    ma._epsilon[i,:,:] /= (i+1)**2
-ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
+# for i in range(L**2):
+#     ma._epsilon[i,:,:] /= (i+1)**2
+# ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.02)

@@ -51,14 +51,6 @@ if J2 != 0.0:
             mats.append(((J2/4) * exchange))
             sites.append([i * L + j, ((i+1)%L) * L + (j-1)%L])
 
-
-cluster_edge = 6
-cluster_ids=[]
-for i in range(cluster_edge):
-    for j in range(cluster_edge):
-        cluster_ids.append(i * L + j)
-
-
 # Spin based Hilbert Space
 hi = nk.hilbert.Spin(s=0.5, total_sz=0.0, N=g.n_nodes)
 
@@ -69,8 +61,8 @@ for mat, site in zip(mats, sites):
 
 transl = symmetries.get_symms_square_lattice(L)
 
-ma = nk.machine.QGPSSumSymExp(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-ma.init_random_parameters(sigma=1)
+ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
+ma.init_random_parameters(sigma=0.08)
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.02)
