@@ -62,7 +62,7 @@ for mat, site in zip(mats, sites):
 transl = symmetries.get_symms_square_lattice(L)
 
 ma = nk.machine.QGPSSumSymExp(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-ma.init_random_parameters(sigma=5.0)
+ma.init_random_parameters(sigma=2.5)
 
 for i in range(L**2):
     ma._epsilon[i,:,:] /= (i+1)**2
