@@ -7,7 +7,6 @@ import symmetries
 
 N = int(sys.argv[1])
 J2 = float(sys.argv[2])
-mode = int(sys.argv[3])
 
 J1 = 1.0
 
@@ -39,16 +38,17 @@ for i in range(L):
         mats.append((-(J1/4) * exchange))
         sites.append([i * L + j, ((i+1)%L) * L + j])
 
-for i in range(L):
-    for j in range(L):
-        mats.append(((J2/4) * mszsz))
-        sites.append([i * L + j, ((i+1)%L) * L + (j+1)%L])
-        mats.append(((J2/4) * mszsz))
-        sites.append([i * L + j, ((i+1)%L) * L + (j-1)%L])
-        mats.append(((J2/4) * exchange))
-        sites.append([i * L + j, ((i+1)%L) * L + (j+1)%L])
-        mats.append(((J2/4) * exchange))
-        sites.append([i * L + j, ((i+1)%L) * L + (j-1)%L])
+if J2 != 0.:
+    for i in range(L):
+        for j in range(L):
+            mats.append(((J2/4) * mszsz))
+            sites.append([i * L + j, ((i+1)%L) * L + (j+1)%L])
+            mats.append(((J2/4) * mszsz))
+            sites.append([i * L + j, ((i+1)%L) * L + (j-1)%L])
+            mats.append(((J2/4) * exchange))
+            sites.append([i * L + j, ((i+1)%L) * L + (j+1)%L])
+            mats.append(((J2/4) * exchange))
+            sites.append([i * L + j, ((i+1)%L) * L + (j-1)%L])
 
 
 # Spin based Hilbert Space
@@ -60,32 +60,41 @@ for mat, site in zip(mats, sites):
     ha += nk.operator.LocalOperator(hi, mat, site)
 
 
-transl = symmetries.get_symms_square_lattice(L)
+ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=None, spin_flip_sym=False, dtype=complex)
 
-if mode == 0:
-    ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=None, spin_flip_sym=False, dtype=complex)
-elif mode == 1:
-    ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=None, spin_flip_sym=False, dtype=complex)
-elif mode == 2:
-    ma = nk.machine.QGPSSumSymExp(hi, n_bond=N, automorphisms=None, spin_flip_sym=False, dtype=complex)
-else:
-    ma = nk.machine.QGPSProdSymExp(hi, n_bond=N, automorphisms=None, spin_flip_sym=False, dtype=complex)
-
-ma.init_random_parameters(sigma=0.1)
+ma.init_random_parameters(sigma=0.1, start_from_uniform=False)
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.02)
 
 # Sampler
-sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
+sa = nk.sampler.MetropolisExchange(machine=ma, graph=g, d_max=2, n_chains=1)
 
 # Stochastic Reconfiguration
 sr = nk.optimizer.SR(ma)
 
+opt_par = 2000
+arr = np.zeros(ma._epsilon.size, dtype=bool)
+arr[:opt_par] = True
+
+class PartialOpt(nk.Vmc):
+    def iter(self, n_steps, step=1):
+        for _ in range(0, n_steps, step):
+            for i in range(0, step):
+                np.random.shuffle(arr)
+                mpi.COMM_WORLD.Bcast(arr, root=0)
+                mpi.COMM_WORLD.barrier()
+                ma.change_opt_ids(arr.reshape(ma._epsilon.shape))
+                dp = self._forward_and_backward()
+                self.update_parameters(dp)
+                if i == 0:
+                    yield self.step_count
+
+
 samples = 10000
 
 # Create the optimization driver
-gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=100)
+gs = PartialOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
