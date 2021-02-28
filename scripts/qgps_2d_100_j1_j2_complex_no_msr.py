@@ -86,6 +86,8 @@ class PartialOpt(nk.Vmc):
         for _ in range(0, n_steps, step):
             for i in range(0, step):
                 np.random.shuffle(arr)
+                mpi.COMM_WORLD.Bcast(arr, root=0)
+                mpi.COMM_WORLD.barrier()
                 ma.change_opt_ids(arr.reshape(ma._epsilon.shape))
                 dp = self._forward_and_backward()
                 self.update_parameters(dp)
