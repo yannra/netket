@@ -65,13 +65,13 @@ ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=None, spin_flip_sym=Fals
 ma.init_random_parameters(sigma=0.1, start_from_uniform=False)
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.04)
+op = nk.optimizer.Sgd(ma, learning_rate=0.02)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma, graph=g, d_max=2, n_chains=1)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma)
+sr = nk.optimizer.SR(ma, use_iterative=False)
 
 class SiteSweepOpt(nk.Vmc):
     def iter(self, n_steps, step=1):
