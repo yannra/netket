@@ -73,24 +73,34 @@ sa = nk.sampler.MetropolisExchange(machine=ma, graph=g, d_max=2, n_chains=1)
 # Stochastic Reconfiguration
 sr = nk.optimizer.SR(ma, use_iterative=False)
 
+max_opt = 2000
+
+arr = np.zeros(ma._epsilon.size, dtype=bool)
+arr[:max_opt] = True
+max_id = max_opt
+
 class SiteSweepOpt(nk.Vmc):
     def iter(self, n_steps, step=1):
+        global max_id
         count = 0
         for _ in range(0, n_steps, step):
             for i in range(0, step):
-                arr=np.zeros(ma._epsilon.shape, dtype=bool)
-                arr[count%L, :, :] = True
-                ma.change_opt_ids(arr)
+                arr.fill(False)
+                arr[max_id:max_id+max_opt] = True
+                if max_id + max_opt >= arr.size:
+                    arr[:(max_id + max_opt)%arr.size] = True
+                max_id = (max_id + max_opt)%arr.size
+                ma.change_opt_ids(arr.reshape(ma._epsilon.shape))
                 dp = self._forward_and_backward()
                 self.update_parameters(dp)
                 if i == 0:
                     yield self.step_count
                 count += 1
 
-samples = 10000
+samples = 5000
 
 # Create the optimization driver
-gs = SiteSweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
+gs = SiteSweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
@@ -122,5 +132,3 @@ if mpi.COMM_WORLD.Get_rank() == 0:
     np.save("epsilon_avg.npy", ma._epsilon)
     with open("result.txt", "a") as fl:
         fl.write("{}  {}  {}  {}\n".format(N, np.real(est.mean), np.imag(est.mean), est.error_of_mean))
-
-
