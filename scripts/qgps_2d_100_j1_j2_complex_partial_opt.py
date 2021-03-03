@@ -61,7 +61,7 @@ for mat, site in zip(mats, sites):
 transl = symmetries.get_symms_square_lattice(L)
 
 ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-ma.init_random_parameters(start_from_uniform=False)
+ma.init_random_parameters(sigma=0.075, start_from_uniform=False)
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.02)
@@ -74,7 +74,7 @@ sa.reset(True)
 sr = nk.optimizer.SR(ma, use_iterative=False)
 
 
-max_opt = 1000
+max_opt = 2000
 
 arr = np.zeros(ma._epsilon.size, dtype=bool)
 arr[:max_opt] = True
@@ -101,7 +101,7 @@ class SiteSweepOpt(nk.Vmc):
 samples = 10000
 
 # Create the optimization driver
-gs = SiteSweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr)
+gs = SiteSweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
