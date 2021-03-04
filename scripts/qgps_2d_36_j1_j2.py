@@ -69,12 +69,8 @@ elif mode == 1:
     ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
 elif mode == 2:
     ma = nk.machine.QGPSSumSymExp(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-elif mode == 3:
-    ma = nk.machine.QGPSProdSymExp(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-elif mode == 4:
-    ma = nk.machine.QGPSPhaseSplitSumSymReg(hi, n_bond_amplitude=N, n_bond_phase=N, automorphisms=transl, spin_flip_sym=True)
 else:
-    ma = nk.machine.QGPSPhaseSplitSumSymAltReg(hi, n_bond_amplitude=N, n_bond_phase=N, automorphisms=transl, spin_flip_sym=True)
+    ma = nk.machine.QGPSProdSymExp(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
 
 ma.init_random_parameters(sigma=0.1)
 
@@ -86,18 +82,43 @@ sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
 sa.reset(True)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma)
+sr = nk.optimizer.SR(ma, use_iterative=False)
+
+
+max_opt = 2500
+
+arr = np.zeros(ma._epsilon.size, dtype=bool)
+arr[:max_opt] = True
+max_id = max_opt
+
+class SiteSweepOpt(nk.Vmc):
+    def iter(self, n_steps, step=1):
+        global max_id
+        count = 0
+        for _ in range(0, n_steps, step):
+            for i in range(0, step):
+                arr.fill(False)
+                arr[max_id:max_id+max_opt] = True
+                if max_id + max_opt >= arr.size:
+                    arr[:(max_id + max_opt)%arr.size] = True
+                max_id = (max_id + max_opt)%arr.size
+                ma.change_opt_ids(arr.reshape(ma._epsilon.shape))
+                dp = self._forward_and_backward()
+                self.update_parameters(dp)
+                if i == 0:
+                    yield self.step_count
+                count += 1
 
 samples = 10000
 
 # Create the optimization driver
-gs = nk.Vmc(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=100)
+gs = SiteSweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
         fl.write("")
 
-for it in gs.iter(1950,1):
+for it in gs.iter(2450,1):
     if mpi.COMM_WORLD.Get_rank() == 0:
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
