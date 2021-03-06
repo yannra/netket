@@ -78,7 +78,7 @@ max_opt = 2500
 
 arr = np.zeros(ma._epsilon.size, dtype=bool)
 arr[:max_opt] = True
-max_id = max_opt
+max_id = min(max_opt, arr.size)
 
 class SiteSweepOpt(nk.Vmc):
     def iter(self, n_steps, step=1):
@@ -86,17 +86,20 @@ class SiteSweepOpt(nk.Vmc):
         count = 0
         for _ in range(0, n_steps, step):
             for i in range(0, step):
-                arr.fill(False)
-                arr[max_id:max_id+max_opt] = True
-                if max_id + max_opt >= arr.size:
-                    arr[:(max_id + max_opt)%arr.size] = True
-                max_id = (max_id + max_opt)%arr.size
                 ma.change_opt_ids(arr.reshape(ma._epsilon.shape))
                 dp = self._forward_and_backward()
                 self.update_parameters(dp)
+                arr.fill(False)
+                arr[max_id:(max_id+max_opt)] = True
+                if max_id + max_opt > arr.size:
+                    arr[:(max_id + max_opt - arr.size)] = True
+                    max_id = min((max_id + max_opt - arr.size), arr.size)
+                else:
+                    max_id = min((max_id + max_opt), arr.size)
                 if i == 0:
                     yield self.step_count
                 count += 1
+
 
 samples = 10000
 
