@@ -44,7 +44,7 @@ sa.reset(True)
 # Stochastic Reconfiguration
 sr = nk.optimizer.SR(ma)
 
-samples = max(5000, ma._epsilon.size * 5)
+samples = L * 100
 
 max_opt = 2500
 
