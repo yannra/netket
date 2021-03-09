@@ -6,7 +6,6 @@ import symmetries
 
 L = int(sys.argv[1])
 N = int(sys.argv[2])
-mode = int(sys.argv[3])
 
 rank = mpi.COMM_WORLD.Get_rank()
 
