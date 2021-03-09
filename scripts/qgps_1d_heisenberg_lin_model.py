@@ -23,7 +23,7 @@ ha = nk.operator.Heisenberg(hi, g, J=0.25)
 
 transl = symmetries.get_symms_chain(L)
 
-ma = nk.machine.QGPSLinExp(hi, n_bond_lin=N, n_bond_exp=0, automorphisms=transl, spin_flip_sym=True, dtype=float)
+ma = nk.machine.QGPSLinExp(hi, n_bond_lin=N, n_bond_exp=0, automorphisms=transl, spin_flip_sym=True, dtype=complex)
 
 ma.init_random_parameters(sigma=0.1)
 
