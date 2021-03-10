@@ -51,7 +51,7 @@ for it in gs.iter(1950,1):
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
 
-epsilon_avg = np.zeros(ma._epsilon_lin.shape, dtype=ma._epsilon.dtype)
+epsilon_avg = np.zeros(ma._epsilon_lin.shape, dtype=ma._epsilon_lin.dtype)
 
 for it in gs.iter(50,1):
     epsilon_avg += ma._epsilon_lin
