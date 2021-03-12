@@ -64,7 +64,10 @@ ma.init_random_parameters(sigma=0.1)
 
 epsilon = np.load("/home/mmm0475/data/vGPS/heisenberg2D/Heisenberg_vGPS_netket_2D_36_sites_J2_0.5_N_20_complex_new_par/Heisenberg_vGPS_netket_2D_36_sites_J2_0.5_N_20_complex_new_par_105761/epsilon_avg.npy")
 
+ma._epsilon[0, :, :] = -10.
 ma._epsilon[:, :20, :] = epsilon
+ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
+
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.05)
