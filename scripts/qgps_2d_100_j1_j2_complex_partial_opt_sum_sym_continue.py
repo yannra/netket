@@ -114,7 +114,14 @@ class BondSweepOpt(nk.Vmc):
         count = 0
         for _ in range(0, n_steps, step):
             for i in range(0, step):
-                ma.change_opt_ids(arr.reshape(ma._epsilon.shape, order="F"))
+                shape_array = np.zeros(ma._epsilon.shape, dtype=bool)
+                arr_count = 0
+                for k in range(ma._epsilon.shape[1]):
+                    for j in range(ma._epsilon.shape[0]):
+                        for l in range(ma._epsilon.shape[2]):
+                            shape_array[j,k,l] = arr[arr_count]
+                            arr_count += 1
+                ma.change_opt_ids(shape_array)
                 dp = self._forward_and_backward()
                 self.update_parameters(dp)
                 arr.fill(False)
