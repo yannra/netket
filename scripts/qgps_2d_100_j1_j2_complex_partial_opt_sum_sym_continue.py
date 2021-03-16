@@ -13,7 +13,7 @@ change_to_exp_form = bool(int(sys.argv[4]))
 eps_read_in = np.load(read_file)
 
 if change_to_exp_form:
-    eps_read_in = log(eps_read_in)
+    eps_read_in = np.log(eps_read_in)
 
 J1 = 1.0
 
