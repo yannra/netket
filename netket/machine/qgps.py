@@ -74,7 +74,20 @@ class QGPS(AbstractMachine):
         self._opt_params = self._epsilon[self._der_ids >= 0].copy()
         self._npar = self._opt_params.size
 
+        self._exp_kern_representation = True
+
+        self._site_product = _np.zeros((self._epsilon.shape[1], self._Smap.shape[0]), dtype=_np.complex128)
+        self._ref_conf = None
+        self._Smap_inverse = -1 * _np.ones((self._Smap.shape[0], self._Smap.max()+1), dtype=_np.int)
+
+        for i in range(self._Smap.shape[0]):
+            for j in range(self._Smap.shape[1]):
+                self._Smap_inverse[i, self._Smap[i,j]] = j
+
         super().__init__(hilbert, dtype=dtype)
+    
+    def reset(self):
+        self._ref_conf = None
 
     @property
     def n_par(self):
@@ -82,17 +95,28 @@ class QGPS(AbstractMachine):
         return self._opt_params.size
     
     def init_random_parameters(self, seed=None, sigma=0.1, start_from_uniform=True):
-        epsilon = _np.ones(self._epsilon.shape, dtype=self._npdtype)
+        if self._exp_kern_representation:
+            epsilon = _np.zeros(self._epsilon.shape, dtype=self._npdtype)
 
-        if _rank == 0:
-            rgen = _np.random.default_rng(seed)
-            epsilon += rgen.normal(scale=sigma, size=epsilon.shape)
-            if self._dtype == complex:
-                epsilon += 1j*rgen.normal(scale=sigma, size=epsilon.shape)
-            if start_from_uniform:
-                epsilon[0,:,:] = 0.0
-            else:
-                epsilon[0,:,:] -= 1.0
+            if _rank == 0:
+                rgen = _np.random.default_rng(seed)
+                epsilon[:,:,:] += rgen.normal(scale=sigma, size=(epsilon.shape[1], epsilon.shape[2]))
+                if self._dtype == complex:
+                    epsilon[0,:,:] += 1j*rgen.normal(scale=sigma, size=(epsilon.shape[1], epsilon.shape[2]))
+                if start_from_uniform:
+                    epsilon[1:,:,:] = 0.
+        else:
+            epsilon = _np.ones(self._epsilon.shape, dtype=self._npdtype)
+
+            if _rank == 0:
+                rgen = _np.random.default_rng(seed)
+                epsilon += rgen.normal(scale=sigma, size=epsilon.shape)
+                if self._dtype == complex:
+                    epsilon += 1j*rgen.normal(scale=sigma, size=epsilon.shape)
+                if start_from_uniform:
+                    epsilon[0,:,:] = 0.0
+                else:
+                    epsilon[0,:,:] -= 1.0
 
         if _n_nodes > 1:
             _MPI_comm.Bcast(epsilon, root=0)
@@ -100,7 +124,7 @@ class QGPS(AbstractMachine):
 
         self._epsilon = epsilon
         self._opt_params = self._epsilon[self._der_ids >= 0].copy()
-    
+
     def change_opt_ids(self, opt_ids):
         # TODO improve this
         count = 0
@@ -115,24 +139,6 @@ class QGPS(AbstractMachine):
         self._opt_params = self._epsilon[self._der_ids >= 0].copy()
         self._npar = self._opt_params.size
 
-    def init_random_parameters_alt(self, seed=None, sigma=0.1):
-        epsilon = _np.zeros(self._epsilon.shape, dtype=self._npdtype)
-
-        if _rank == 0:
-            rgen = _np.random.default_rng(seed)
-            epsilon += rgen.normal(scale=sigma, size=epsilon.shape)
-            if self._dtype == complex:
-                epsilon += 1j*rgen.normal(scale=sigma, size=epsilon.shape)
-            for i in range(epsilon.shape[0]):
-                for j in range(epsilon.shape[1]):
-                    epsilon[i, j, :] /= _np.max(abs(epsilon[i, j, :]))
-
-        if _n_nodes > 1:
-            _MPI_comm.Bcast(epsilon, root=0)
-            _MPI_comm.barrier()
-
-        self._epsilon = epsilon
-        self._opt_params = self._epsilon[self._der_ids >= 0].copy()
 
     def log_val(self, x, out=None):
         r"""Computes the logarithm of the wave function for a batch of visible
@@ -148,7 +154,19 @@ class QGPS(AbstractMachine):
             matrix.
         """
         start = time.time()
-        val = self._log_val_kernel(x, out, self._epsilon, self._Smap, self._sym_spin_flip_sign)
+        if self._ref_conf is None:
+            if len(x.shape) > 1:
+                self._ref_conf = x[0,:].copy()
+            else:
+                self._ref_conf = x.copy()
+            if self._exp_kern_representation:
+                self._compute_site_prod_exp_form(self._ref_conf, self._site_product, self._epsilon, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign)
+            else:
+                self._compute_site_prod_std_form(self._ref_conf, self._site_product, self._epsilon, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign)
+        if self._exp_kern_representation:
+            val = self._log_val_kernel_exp_form(x, out, self._ref_conf, self._site_product, self._epsilon, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign)
+        else:
+            val = self._log_val_kernel_std_form(x, out, self._ref_conf, self._site_product, self._epsilon, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign)
         self.value_time += time.time() - start
         return val
 
@@ -165,9 +183,47 @@ class QGPS(AbstractMachine):
             `out`
         """
         start = time.time()
-        der = self._der_log_kernel(x, out, self._epsilon, self._npar, self._Smap, self._sym_spin_flip_sign, self._der_ids)
+        if self._ref_conf is None:
+            if len(x.shape) > 1:
+                self._ref_conf = x[0,:].copy()
+            else:
+                self._ref_conf = x.copy()
+            if self._exp_kern_representation:
+                self._compute_site_prod_exp_form(self._ref_conf, self._site_product, self._epsilon, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign)
+            else:
+                self._compute_site_prod_std_form(self._ref_conf, self._site_product, self._epsilon, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign)
+        if self._exp_kern_representation:
+            der = self._der_log_kernel_exp_form(x, out,  self._ref_conf, self._site_product, self._epsilon, self._npar, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign, self._der_ids)
+        else:
+            der = self._der_log_kernel_std_form(x, out,  self._ref_conf, self._site_product, self._epsilon, self._npar, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign, self._der_ids)
         self.der_time += time.time() - start
         return der
+
+    @staticmethod
+    @jit(nopython=True)
+    def _compute_site_prod_std_form(ref_conf, site_product, epsilon, Smap, Smap_inverse, sym_spin_flip_sign):
+        for t in range(Smap.shape[0]):
+            for w in range(epsilon.shape[1]):
+                innerprod = _np.complex128(1.0)
+                for i in range(Smap.shape[1]):
+                    if sym_spin_flip_sign[t] * ref_conf[Smap[t,i]] < 0:
+                        innerprod *= epsilon[i, w, 0]
+                    else:
+                        innerprod *= epsilon[i, w, 1]
+                site_product[w, t] = innerprod
+    
+    @staticmethod
+    @jit(nopython=True)
+    def _compute_site_prod_exp_form(ref_conf, site_product, epsilon, Smap, Smap_inverse, sym_spin_flip_sign):
+        for t in range(Smap.shape[0]):
+            for w in range(epsilon.shape[1]):
+                innerprod = _np.complex128(0.0)
+                for i in range(Smap.shape[1]):
+                    if sym_spin_flip_sign[t] * ref_conf[Smap[t,i]] < 0:
+                        innerprod += epsilon[i, w, 0]
+                    else:
+                        innerprod += epsilon[i, w, 1]
+                site_product[w, t] = innerprod
 
     @property
     def state_dict(self):
@@ -202,6 +258,7 @@ class QGPS(AbstractMachine):
             _np.copyto(x, p[i : i + x.size])
             i += x.size
         self._epsilon[self._der_ids >= 0] = self._opt_params
+        self.reset()
     
 
 class QGPSSumSym(QGPS):
@@ -213,60 +270,190 @@ class QGPSSumSym(QGPS):
 
     @staticmethod
     @jit(nopython=True)
-    def _log_val_kernel(x, out, epsilon, Smap, symSign):
+    def _log_val_kernel_exp_form(x, out, ref_conf, site_product, epsilon, Smap, Smap_inverse, sym_spin_flip_sign):
         if out is None:
             out = _np.empty(x.shape[0], dtype=_np.complex128)
 
         for b in range(x.shape[0]):
             out[b] = 0.0
+
+            # update site product
+            for pos in range(x.shape[1]):
+                if x[b, pos] != ref_conf[pos]:
+                    for t in range(Smap.shape[0]):
+                        i = Smap_inverse[t, pos]
+                        if i != -1:
+                            for w in range(epsilon.shape[1]):
+                                if sym_spin_flip_sign[t] * x[b, pos] < 0:
+                                    site_product[w, t] += (epsilon[i, w, 0] - epsilon[i, w, 1])
+                                else:
+                                    site_product[w, t] += (epsilon[i, w, 1] - epsilon[i, w, 0])
+                ref_conf[pos] = x[b, pos]
+
             for t in range(Smap.shape[0]):
                 arg = _np.complex128(0.0)
                 for w in range(epsilon.shape[1]):
-                    innerprod = _np.complex128(1.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            innerprod *= epsilon[i, w, 0]
-                        else:
-                            innerprod *= epsilon[i, w, 1]
-                    arg += innerprod
+                    arg += _np.exp(site_product[w, t])
                 out[b] += _np.exp(arg)
             out[b] = _np.log(out[b])
         return out
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_par, Smap, symSign, der_ids):
+    def _der_log_kernel_exp_form(x, out, ref_conf, site_product, epsilon, npar, Smap, Smap_inverse, sym_spin_flip_sign, der_ids):
         batch_size = x.shape[0]
-        eps = _np.finfo(_np.double).eps
 
         if out is None:
-            out = _np.empty((batch_size, n_par), dtype=_np.complex128)
+            out = _np.empty((batch_size, npar), dtype=_np.complex128)
 
         out.fill(0.0)
 
         for b in range(batch_size):
+            #update site product
+            for pos in range(x.shape[1]):
+                if x[b, pos] != ref_conf[pos]:
+                    for t in range(Smap.shape[0]):
+                        i = Smap_inverse[t, pos]
+                        if i != -1:
+                            for w in range(epsilon.shape[1]):
+                                if sym_spin_flip_sign[t] * x[b, pos] < 0:
+                                    site_product[w, t] += (epsilon[i, w, 0]-epsilon[i, w, 1])
+                                else:
+                                    site_product[w, t] += (epsilon[i, w, 1]-epsilon[i, w, 0])
+                ref_conf[pos] = x[b, pos]
+
             value = _np.complex128(0.0)
             for t in range(Smap.shape[0]):
                 argument = _np.complex128(0.0)
                 for w in range(epsilon.shape[1]):
-                    innerargument = _np.complex128(1.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            innerargument *= epsilon[i, w, 0]
-                        else:
-                            innerargument *= epsilon[i, w, 1]
-                    argument += innerargument
+                    argument += _np.exp(site_product[w,t])
                 prefactor = _np.exp(argument)
 
                 for w in range(epsilon.shape[1]):
-                    derivative = _np.complex128(1.0)
+                    derivative = _np.exp(site_product[w,t])
                     for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            derivative *= epsilon[i, w, 0]
+                        if sym_spin_flip_sign[t] * x[b, Smap[t,i]] < 0:
+                            if der_ids[i, w, 0] >= 0:
+                                out[b, der_ids[i, w, 0]] += prefactor * derivative
                         else:
-                            derivative *= epsilon[i, w, 1]
+                            if der_ids[i, w, 1] >= 0:
+                                out[b, der_ids[i, w, 1]] += prefactor * derivative
+                value += prefactor
+            out[b, :] /= value
+        return out
+    
+    @staticmethod
+    @jit(nopython=True)
+    def _log_val_kernel_std_form(x, out, ref_conf, site_product, epsilon, Smap, Smap_inverse, sym_spin_flip_sign):
+        eps = _np.finfo(_np.double).eps
+
+        if out is None:
+            out = _np.empty(x.shape[0], dtype=_np.complex128)
+
+        for b in range(x.shape[0]):
+            out[b] = 0.0
+
+            # update site product
+            recompute = False
+            for pos in range(x.shape[1]):
+                if x[b, pos] != ref_conf[pos]:
+                    for t in range(Smap.shape[0]):
+                        if recompute:
+                            break
+                        i = Smap_inverse[t, pos]
+                        if i != -1:
+                            for w in range(epsilon.shape[1]):
+                                # TODO: careful about 0 values -> better implementation
+                                if sym_spin_flip_sign[t] * x[b, pos] < 0:
+                                    if abs(epsilon[i, w, 1]) > 1.e4 * eps:
+                                        site_product[w, t] *= (epsilon[i, w, 0]/epsilon[i, w, 1])
+                                    else:
+                                        recompute = True
+                                else:
+                                    if abs(epsilon[i, w, 0]) > 1.e4 * eps:
+                                        site_product[w, t] *= (epsilon[i, w, 1]/epsilon[i, w, 0])
+                                    else:
+                                        recompute = True
+                                if recompute:
+                                    break
+                ref_conf[pos] = x[b, pos]
+            if recompute:
+                for t in range(Smap.shape[0]):
+                    for w in range(epsilon.shape[1]):
+                        site_product[w, t] = _np.complex128(1.0)
+                        for i in range(Smap.shape[1]):
+                            if sym_spin_flip_sign[t] * ref_conf[Smap[t,i]] < 0:
+                                site_product[w, t] *= epsilon[i, w, 0]
+                            else:
+                                site_product[w, t] *= epsilon[i, w, 1]
+
+            for t in range(Smap.shape[0]):
+                arg = _np.complex128(0.0)
+                for w in range(epsilon.shape[1]):
+                    arg += site_product[w, t]
+                out[b] += _np.exp(arg)
+            out[b] = _np.log(out[b])
+        return out
+
+    @staticmethod
+    @jit(nopython=True)
+    def _der_log_kernel_std_form(x, out, ref_conf, site_product, epsilon, npar, Smap, Smap_inverse, sym_spin_flip_sign, der_ids):
+        batch_size = x.shape[0]
+        eps = _np.finfo(_np.double).eps
+
+        if out is None:
+            out = _np.empty((batch_size, npar), dtype=_np.complex128)
+
+        out.fill(0.0)
+
+        for b in range(x.shape[0]):
+            out[b] = 0.0
+
+            # update site product
+            recompute = False
+            for pos in range(x.shape[1]):
+                if x[b, pos] != ref_conf[pos]:
+                    for t in range(Smap.shape[0]):
+                        if recompute:
+                            break
+                        i = Smap_inverse[t, pos]
+                        if i != -1:
+                            for w in range(epsilon.shape[1]):
+                                # TODO: careful about 0 values -> better implementation
+                                if sym_spin_flip_sign[t] * x[b, pos] < 0:
+                                    if abs(epsilon[i, w, 1]) > 1.e4 * eps:
+                                        site_product[w, t] *= (epsilon[i, w, 0]/epsilon[i, w, 1])
+                                    else:
+                                        recompute = True
+                                else:
+                                    if abs(epsilon[i, w, 0]) > 1.e4 * eps:
+                                        site_product[w, t] *= (epsilon[i, w, 1]/epsilon[i, w, 0])
+                                    else:
+                                        recompute = True
+                                if recompute:
+                                    break
+                ref_conf[pos] = x[b, pos]
+            if recompute:
+                for t in range(Smap.shape[0]):
+                    for w in range(epsilon.shape[1]):
+                        site_product[w, t] = _np.complex128(1.0)
+                        for i in range(Smap.shape[1]):
+                            if sym_spin_flip_sign[t] * ref_conf[Smap[t,i]] < 0:
+                                site_product[w, t] *= epsilon[i, w, 0]
+                            else:
+                                site_product[w, t] *= epsilon[i, w, 1]
+
+            value = _np.complex128(0.0)
+            for t in range(Smap.shape[0]):
+                argument = _np.complex128(0.0)
+                for w in range(epsilon.shape[1]):
+                    argument += site_product[w,t]
+                prefactor = _np.exp(argument)
+
+                for w in range(epsilon.shape[1]):
+                    derivative = site_product[w,t]
                     for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
+                        if sym_spin_flip_sign[t] * x[b, Smap[t,i]] < 0:
                             if der_ids[i, w, 0] >= 0:
                                 if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
                                     out[b, der_ids[i, w, 0]] += prefactor * derivative/epsilon[i, w, 0]
@@ -274,7 +461,7 @@ class QGPSSumSym(QGPS):
                                     der = _np.complex128(1.0)
                                     for j in range(Smap.shape[1]):
                                         if j != i:
-                                            if symSign[t] * x[b, Smap[t,j]] < 0:
+                                            if sym_spin_flip_sign[t] * x[b, Smap[t,j]] < 0:
                                                 der *= epsilon[j, w, 0]
                                             else:
                                                 der *= epsilon[j, w, 1]
@@ -287,7 +474,7 @@ class QGPSSumSym(QGPS):
                                     der = _np.complex128(1.0)
                                     for j in range(Smap.shape[1]):
                                         if j != i:
-                                            if symSign[t] * x[b, Smap[t,j]] < 0:
+                                            if sym_spin_flip_sign[t] * x[b, Smap[t,j]] < 0:
                                                 der *= epsilon[j, w, 0]
                                             else:
                                                 der *= epsilon[j, w, 1]
@@ -306,45 +493,167 @@ class QGPSProdSym(QGPS):
 
     @staticmethod
     @jit(nopython=True)
-    def _log_val_kernel(x, out, epsilon, Smap, symSign):
+    def _log_val_kernel_exp_form(x, out, ref_conf, site_product, epsilon, Smap, Smap_inverse, sym_spin_flip_sign):
         if out is None:
             out = _np.empty(x.shape[0], dtype=_np.complex128)
 
         for b in range(x.shape[0]):
             out[b] = 0.0
+
+            # update site product
+            for pos in range(x.shape[1]):
+                if x[b, pos] != ref_conf[pos]:
+                    for t in range(Smap.shape[0]):
+                        i = Smap_inverse[t, pos]
+                        if i != -1:
+                            for w in range(epsilon.shape[1]):
+                                if sym_spin_flip_sign[t] * x[b, pos] < 0:
+                                    site_product[w, t] += (epsilon[i, w, 0] - epsilon[i, w, 1])
+                                else:
+                                    site_product[w, t] += (epsilon[i, w, 1] - epsilon[i, w, 0])
+                ref_conf[pos] = x[b, pos]
+
             for t in range(Smap.shape[0]):
                 for w in range(epsilon.shape[1]):
-                    innerprod = _np.complex128(1.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            innerprod *= epsilon[i, w, 0]
-                        else:
-                            innerprod *= epsilon[i, w, 1]
-                    out[b] += innerprod
+                    out[b] += _np.exp(site_product[w, t])
         return out
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_par, Smap, symSign, der_ids):
+    def _der_log_kernel_exp_form(x, out, ref_conf, site_product, epsilon, npar, Smap, Smap_inverse, sym_spin_flip_sign, der_ids):
         batch_size = x.shape[0]
-        eps = _np.finfo(_np.double).eps
-
         if out is None:
-            out = _np.empty((batch_size, n_par), dtype=_np.complex128)
+            out = _np.empty((batch_size, npar), dtype=_np.complex128)
 
         out.fill(0.0)
 
         for b in range(batch_size):
+            # update site product
+            for pos in range(x.shape[1]):
+                if x[b, pos] != ref_conf[pos]:
+                    for t in range(Smap.shape[0]):
+                        i = Smap_inverse[t, pos]
+                        if i != -1:
+                            for w in range(epsilon.shape[1]):
+                                if sym_spin_flip_sign[t] * x[b, pos] < 0:
+                                    site_product[w, t] += (epsilon[i, w, 0]-epsilon[i, w, 1])
+                                else:
+                                    site_product[w, t] += (epsilon[i, w, 1]-epsilon[i, w, 0])
+                ref_conf[pos] = x[b, pos]
+
             for t in range(Smap.shape[0]):
                 for w in range(epsilon.shape[1]):
-                    derivative = _np.complex128(1.0)
+                    derivative = _np.exp(site_product[w,t])
                     for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            derivative *= epsilon[i, w, 0]
+                        if sym_spin_flip_sign[t] * x[b, Smap[t,i]] < 0:
+                            if der_ids[i, w, 0] >= 0:
+                                out[b, der_ids[i, w, 0]] += derivative
                         else:
-                            derivative *= epsilon[i, w, 1]
+                            if der_ids[i, w, 1] >= 0:
+                                out[b, der_ids[i, w, 1]] += derivative
+        return out
+    
+    @staticmethod
+    @jit(nopython=True)
+    def _log_val_kernel_std_form(x, out, ref_conf, site_product, epsilon, Smap, Smap_inverse, sym_spin_flip_sign):
+        eps = _np.finfo(_np.double).eps
+
+        if out is None:
+            out = _np.empty(x.shape[0], dtype=_np.complex128)
+
+        for b in range(x.shape[0]):
+            out[b] = 0.0
+
+            # update site product
+            recompute = False
+            for pos in range(x.shape[1]):
+                if x[b, pos] != ref_conf[pos]:
+                    for t in range(Smap.shape[0]):
+                        if recompute:
+                            break
+                        i = Smap_inverse[t, pos]
+                        if i != -1:
+                            for w in range(epsilon.shape[1]):
+                                # TODO: careful about 0 values -> better implementation
+                                if sym_spin_flip_sign[t] * x[b, pos] < 0:
+                                    if abs(epsilon[i, w, 1]) > 1.e4 * eps:
+                                        site_product[w, t] *= (epsilon[i, w, 0]/epsilon[i, w, 1])
+                                    else:
+                                        recompute = True
+                                else:
+                                    if abs(epsilon[i, w, 0]) > 1.e4 * eps:
+                                        site_product[w, t] *= (epsilon[i, w, 1]/epsilon[i, w, 0])
+                                    else:
+                                        recompute = True
+                                if recompute:
+                                    break
+                ref_conf[pos] = x[b, pos]
+            if recompute:
+                for t in range(Smap.shape[0]):
+                    for w in range(epsilon.shape[1]):
+                        site_product[w, t] = _np.complex128(1.0)
+                        for i in range(Smap.shape[1]):
+                            if sym_spin_flip_sign[t] * ref_conf[Smap[t,i]] < 0:
+                                site_product[w, t] *= epsilon[i, w, 0]
+                            else:
+                                site_product[w, t] *= epsilon[i, w, 1]
+
+            for t in range(Smap.shape[0]):
+                for w in range(epsilon.shape[1]):
+                    out[b] += site_product[w, t]
+        return out
+
+    @staticmethod
+    @jit(nopython=True)
+    def _der_log_kernel_std_form(x, out, ref_conf, site_product, epsilon, npar, Smap, Smap_inverse, sym_spin_flip_sign, der_ids):
+        batch_size = x.shape[0]
+        eps = _np.finfo(_np.double).eps
+
+        if out is None:
+            out = _np.empty((batch_size, npar), dtype=_np.complex128)
+
+        out.fill(0.0)
+
+        for b in range(batch_size):
+            # update site product
+            recompute = False
+            for pos in range(x.shape[1]):
+                if x[b, pos] != ref_conf[pos]:
+                    for t in range(Smap.shape[0]):
+                        if recompute:
+                            break
+                        i = Smap_inverse[t, pos]
+                        if i != -1:
+                            for w in range(epsilon.shape[1]):
+                                # TODO: careful about 0 values -> better implementation
+                                if sym_spin_flip_sign[t] * x[b, pos] < 0:
+                                    if abs(epsilon[i, w, 1]) > 1.e4 * eps:
+                                        site_product[w, t] *= (epsilon[i, w, 0]/epsilon[i, w, 1])
+                                    else:
+                                        recompute = True
+                                else:
+                                    if abs(epsilon[i, w, 0]) > 1.e4 * eps:
+                                        site_product[w, t] *= (epsilon[i, w, 1]/epsilon[i, w, 0])
+                                    else:
+                                        recompute = True
+                                if recompute:
+                                    break
+                ref_conf[pos] = x[b, pos]
+            if recompute:
+                for t in range(Smap.shape[0]):
+                    for w in range(epsilon.shape[1]):
+                        site_product[w, t] = _np.complex128(1.0)
+                        for i in range(Smap.shape[1]):
+                            if sym_spin_flip_sign[t] * ref_conf[Smap[t,i]] < 0:
+                                site_product[w, t] *= epsilon[i, w, 0]
+                            else:
+                                site_product[w, t] *= epsilon[i, w, 1]
+
+            for t in range(Smap.shape[0]):
+                for w in range(epsilon.shape[1]):
+                    derivative = site_product[w,t]
                     for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
+                        if sym_spin_flip_sign[t] * x[b, Smap[t,i]] < 0:
                             if der_ids[i, w, 0] >= 0:
                                 if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
                                     out[b, der_ids[i, w, 0]] += derivative/epsilon[i, w, 0]
@@ -352,7 +661,7 @@ class QGPSProdSym(QGPS):
                                     der = _np.complex128(1.0)
                                     for j in range(Smap.shape[1]):
                                         if j != i:
-                                            if symSign[t] * x[b, Smap[t,j]] < 0:
+                                            if sym_spin_flip_sign[t] * x[b, Smap[t,j]] < 0:
                                                 der *= epsilon[j, w, 0]
                                             else:
                                                 der *= epsilon[j, w, 1]
@@ -365,660 +674,12 @@ class QGPSProdSym(QGPS):
                                     der = _np.complex128(1.0)
                                     for j in range(Smap.shape[1]):
                                         if j != i:
-                                            if symSign[t] * x[b, Smap[t,j]] < 0:
+                                            if sym_spin_flip_sign[t] * x[b, Smap[t,j]] < 0:
                                                 der *= epsilon[j, w, 0]
                                             else:
                                                 der *= epsilon[j, w, 1]
                                     out[b, der_ids[i, w, 1]] += der
         return out
-
-
-class QGPSExp(QGPS):
-    def __init__(self, hilbert, epsilon=None, n_bond=None, automorphisms=None,
-                 spin_flip_sym=False, cluster_ids=None, dtype=complex):
-        super().__init__(hilbert, epsilon=epsilon, n_bond=n_bond,
-                         automorphisms=automorphisms, spin_flip_sym=spin_flip_sym,
-                         cluster_ids=cluster_ids, dtype=dtype)
-
-    def init_random_parameters(self, seed=None, sigma=1):
-        epsilon = _np.zeros(self._epsilon.shape, dtype=self._npdtype)
-
-        if _rank == 0:
-            rgen = _np.random.default_rng(seed)
-            epsilon[0,:,:] += rgen.normal(scale=sigma, size=(epsilon.shape[1], epsilon.shape[2]))
-            if self._dtype == complex:
-                epsilon[0,:,:] += 1j*rgen.normal(scale=sigma, size=(epsilon.shape[1], epsilon.shape[2]))
-
-        if _n_nodes > 1:
-            _MPI_comm.Bcast(epsilon, root=0)
-            _MPI_comm.barrier()
-
-        self._epsilon = epsilon
-        self._opt_params = self._epsilon[self._der_ids >= 0].copy()
-
-
-class QGPSSumSymExp(QGPSExp):
-    def __init__(self, hilbert, epsilon=None, n_bond=None, automorphisms=None,
-                 spin_flip_sym=False, cluster_ids=None, dtype=complex):
-        super().__init__(hilbert, epsilon=epsilon, n_bond=n_bond,
-                         automorphisms=automorphisms, spin_flip_sym=spin_flip_sym,
-                         cluster_ids=cluster_ids, dtype=dtype)
-    @staticmethod
-    @jit(nopython=True)
-    def _log_val_kernel(x, out, epsilon, Smap, symSign):
-        if out is None:
-            out = _np.empty(x.shape[0], dtype=_np.complex128)
-
-        for b in range(x.shape[0]):
-            out[b] = 0.0
-            for t in range(Smap.shape[0]):
-                arg = _np.complex128(0.0)
-                for w in range(epsilon.shape[1]):
-                    exparg = _np.complex128(0.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            exparg += epsilon[i, w, 0]
-                        else:
-                            exparg += epsilon[i, w, 1]
-                    arg += _np.exp(exparg)
-                out[b] += _np.exp(arg)
-            out[b] = _np.log(out[b])
-        return out
-
-    @staticmethod
-    @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_par, Smap, symSign, der_ids):
-        batch_size = x.shape[0]
-
-        if out is None:
-            out = _np.empty((batch_size, n_par), dtype=_np.complex128)
-
-        out.fill(0.0)
-
-        for b in range(batch_size):
-            value = _np.complex128(0.0)
-            for t in range(Smap.shape[0]):
-                argument = _np.complex128(0.0)
-                for w in range(epsilon.shape[1]):
-                    innerargument = _np.complex128(0.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            innerargument += epsilon[i, w, 0]
-                        else:
-                            innerargument += epsilon[i, w, 1]
-                    argument += _np.exp(innerargument)
-                prefactor = _np.exp(argument)
-
-                for w in range(epsilon.shape[1]):
-                    arg = _np.complex128(0.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            arg += epsilon[i, w, 0]
-                        else:
-                            arg += epsilon[i, w, 1]
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            if der_ids[i, w, 0] >= 0:
-                                out[b, der_ids[i, w, 0]] += prefactor * _np.exp(arg)
-                        else:
-                            if der_ids[i, w, 1] >= 0:
-                                out[b, der_ids[i, w, 1]] += prefactor * _np.exp(arg)
-                value += prefactor
-            out[b, :] /= value
-        return out
-
-
-class QGPSProdSymExp(QGPSExp):
-    def __init__(self, hilbert, epsilon=None, n_bond=None, automorphisms=None,
-                 spin_flip_sym=False, cluster_ids=None, dtype=complex):
-        super().__init__(hilbert, epsilon=epsilon, n_bond=n_bond,
-                         automorphisms=automorphisms, spin_flip_sym=spin_flip_sym,
-                         cluster_ids=cluster_ids, dtype=dtype)
-
-    @staticmethod
-    @jit(nopython=True)
-    def _log_val_kernel(x, out, epsilon, Smap, symSign):
-        if out is None:
-            out = _np.empty(x.shape[0], dtype=_np.complex128)
-
-        for b in range(x.shape[0]):
-            out[b] = 0.0
-            for t in range(Smap.shape[0]):
-                for w in range(epsilon.shape[1]):
-                    arg = _np.complex128(0.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            arg += epsilon[i, w, 0]
-                        else:
-                            arg += epsilon[i, w, 1]
-                    out[b] += _np.exp(arg)
-        return out
-
-    @staticmethod
-    @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_par, Smap, symSign, der_ids):
-        batch_size = x.shape[0]
-
-        if out is None:
-            out = _np.empty((batch_size, n_par), dtype=_np.complex128)
-
-        out.fill(0.0)
-
-        for b in range(batch_size):
-            for t in range(Smap.shape[0]):
-                for w in range(epsilon.shape[1]):
-                    derivative = _np.complex128(0.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            derivative += epsilon[i, w, 0]
-                        else:
-                            derivative += epsilon[i, w, 1]
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            if der_ids[i, w, 0] >= 0:
-                                out[b, der_ids[i, w, 0]] += _np.exp(derivative)
-                        else:
-                            if der_ids[i, w, 1] >= 0:
-                                out[b, der_ids[i, w, 1]] += _np.exp(derivative)
-        return out
-
-
-class QGPSPhaseSplit(QGPS):
-    def __init__(self, hilbert, epsilon=None, n_bond_amplitude=None, n_bond_phase=None,
-                 automorphisms=None, spin_flip_sym=False, cluster_ids=None):
-        self.n_bond_amplitude = n_bond_amplitude
-
-        if n_bond_phase is not None and n_bond_amplitude is not None:
-            n_bond_total = n_bond_phase + n_bond_amplitude
-            if epsilon is not None:
-                assert(n_bond_total == epsilon.shape[1])
-        else:
-            assert(epsilon is not None)
-            n_bond_total = epsilon.shape[1]
-            if n_bond_phase is not None:
-                if n_bond_amplitude is not None:
-                    assert(n_bond_phase + n_bond_amplitude == n_bond_total)
-                else:
-                    self.n_bond_amplitude = n_bond_total - n_bond_phase
-            else:
-                self.n_bond_amplitude = _np.ceil(n_bond_total/2)
-
-        super().__init__(hilbert, epsilon=epsilon, n_bond=n_bond_total,
-                         automorphisms=automorphisms, spin_flip_sym=spin_flip_sym,
-                         cluster_ids=cluster_ids, dtype=float)
-
-    def log_val(self, x, out=None):
-        r"""Computes the logarithm of the wave function for a batch of visible
-        configurations `x` and stores the result into `out`.
-
-        Args:
-            x: A matrix of `float64` of shape `(*, self.n_visible)`.
-            out: Destination vector of `complex128`. The
-                 length of `out` should be `x.shape[0]`.
-
-        Returns:
-            A complex number when `x` is a vector and vector when `x` is a
-            matrix.
-        """
-        start = time.time()
-        val = self._log_val_kernel(x, out, self._epsilon, self.n_bond_amplitude, 
-                                   self._Smap, self._sym_spin_flip_sign)
-        self.value_time += time.time() - start
-        return val
-
-    def der_log(self, x, out=None):
-        r"""Computes the gradient of the logarithm of the wavefunction for a
-        batch of visible configurations `x` and stores the result into `out`.
-
-        Args:
-            x: A matrix of `float64` of shape `(*, self.n_visible)`.
-            out: Destination tensor of `complex128`.
-                `out` should be a matrix of shape `(v.shape[0], self.n_par)`.
-
-        Returns:
-            `out`
-        """
-        start = time.time()
-        der = self._der_log_kernel(x, out, self._epsilon, self.n_bond_amplitude,
-                                   self._npar, self._Smap, self._sym_spin_flip_sign, self._der_ids)
-        self.der_time += time.time() - start
-        return der
-    
-    def init_random_parameters(self, seed=None, sigma=0.1, random_sign=False):
-        epsilon = _np.ones(self._epsilon.shape, dtype=self._npdtype)
-
-        if _rank == 0:
-            rgen = _np.random.default_rng(seed)
-            amp_bond = self.n_bond_amplitude
-            eps_shape = epsilon.shape
-            epsilon[:,:,:] += rgen.normal(scale=sigma, size=eps_shape)
-            epsilon[0,:amp_bond,:] = 0.0
-            epsilon[0,amp_bond:,:] = sigma
-            if random_sign:
-                epsilon *= (2*rgen.integers(0,2,size=epsilon.shape)-1)
-
-        if _n_nodes > 1:
-            _MPI_comm.Bcast(epsilon, root=0)
-            _MPI_comm.barrier()
-
-        self._epsilon = epsilon
-
-
-class QGPSPhaseSplitSumSym(QGPSPhaseSplit):
-    def __init__(self, hilbert, epsilon=None, n_bond_amplitude=None, n_bond_phase=None,
-                 automorphisms=None, spin_flip_sym=False, cluster_ids=None):
-        super().__init__(hilbert, epsilon=epsilon, n_bond_amplitude=n_bond_amplitude,
-                         n_bond_phase=n_bond_phase, automorphisms=automorphisms,
-                         spin_flip_sym=spin_flip_sym, cluster_ids=cluster_ids)
-
-    @staticmethod
-    @jit(nopython=True)
-    def _log_val_kernel(x, out, epsilon, n_bond_amplitude, Smap, symSign):
-        if out is None:
-            out = _np.empty(x.shape[0], dtype=_np.complex128)
-
-        for b in range(x.shape[0]):
-            out[b] = 0.0
-            for t in range(Smap.shape[0]):
-                arg = _np.complex128(0.0)
-                for w in range(epsilon.shape[1]):
-                    innerprod = _np.complex128(1.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            innerprod *= epsilon[i, w, 0]
-                        else:
-                            innerprod *= epsilon[i, w, 1]
-                    if w >= n_bond_amplitude:
-                        innerprod *= 1.0j
-                    arg += innerprod
-                out[b] += _np.exp(arg)
-            out[b] = _np.log(out[b])
-        return out
-
-    @staticmethod
-    @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap, symSign, der_ids):
-        batch_size = x.shape[0]
-        eps = _np.finfo(_np.double).eps
-
-        if out is None:
-            out = _np.empty((batch_size, n_par), dtype=_np.complex128)
-
-        out.fill(0.0)
-
-        for b in range(batch_size):
-            value = _np.complex128(0.0)
-            for t in range(Smap.shape[0]):
-                argument = _np.complex128(0.0)
-                for w in range(epsilon.shape[1]):
-                    innerargument = _np.complex128(1.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            innerargument *= epsilon[i, w, 0]
-                        else:
-                            innerargument *= epsilon[i, w, 1]
-                    if w >= n_bond_amplitude:
-                        innerargument *= 1.0j
-                    argument += innerargument
-                prefactor = _np.exp(argument)
-
-                for w in range(epsilon.shape[1]):
-                    derivative = _np.complex128(1.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            derivative *= epsilon[i, w, 0]
-                        else:
-                            derivative *= epsilon[i, w, 1]
-                    if w >= n_bond_amplitude:
-                        derivative *= 1.0j
-                
-
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            if der_ids[i, w, 0] >= 0:
-                                if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
-                                    out[b, der_ids[i, w, 0]] += prefactor * derivative/epsilon[i, w, 0]
-                                else:
-                                    der = _np.complex128(1.0)
-                                    for j in range(Smap.shape[1]):
-                                        if j != i:
-                                            if symSign[t] * x[b, Smap[t,j]] < 0:
-                                                der *= epsilon[j, w, 0]
-                                            else:
-                                                der *= epsilon[j, w, 1]
-                                    if w >= n_bond_amplitude:
-                                        der *= 1.0j
-                                    out[b, der_ids[i, w, 0]] += prefactor * der
-                        else:
-                            if der_ids[i, w, 1] >= 0:
-                                if _np.abs(epsilon[i, w, 1]) > 1.e6*eps:
-                                    out[b, der_ids[i, w, 1]] += prefactor * derivative/epsilon[i, w, 1]
-                                else:
-                                    der = _np.complex128(1.0)
-                                    for j in range(Smap.shape[1]):
-                                        if j != i:
-                                            if symSign[t] * x[b, Smap[t,j]] < 0:
-                                                der *= epsilon[j, w, 0]
-                                            else:
-                                                der *= epsilon[j, w, 1]
-                                    if w >= n_bond_amplitude:
-                                        der *= 1.0j
-                                    out[b, der_ids[i, w, 1]] += prefactor * der
-                value += prefactor
-            out[b, :] /= value
-        return out
-
-
-class QGPSPhaseSplitProdSym(QGPSPhaseSplit):
-    def __init__(self, hilbert, epsilon=None, n_bond_amplitude=None, n_bond_phase=None,
-                 automorphisms=None, spin_flip_sym=False, cluster_ids=None):
-        super().__init__(hilbert, epsilon=epsilon, n_bond_amplitude=n_bond_amplitude,
-                         n_bond_phase=n_bond_phase, automorphisms=automorphisms,
-                         spin_flip_sym=spin_flip_sym, cluster_ids=cluster_ids)
-
-    @staticmethod
-    @jit(nopython=True)
-    def _log_val_kernel(x, out, epsilon, n_bond_amplitude, Smap, symSign):
-        if out is None:
-            out = _np.empty(x.shape[0], dtype=_np.complex128)
-
-        for b in range(x.shape[0]):
-            out[b] = 0.0
-            for t in range(Smap.shape[0]):
-                for w in range(epsilon.shape[1]):
-                    innerprod = _np.complex128(1.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            innerprod *= epsilon[i, w, 0]
-                        else:
-                            innerprod *= epsilon[i, w, 1]
-                    if w >= n_bond_amplitude:
-                        innerprod *= 1.0j
-                    out[b] += innerprod
-        return out
-
-    @staticmethod
-    @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap, symSign, der_ids):
-        batch_size = x.shape[0]
-        eps = _np.finfo(_np.double).eps
-
-        if out is None:
-            out = _np.empty((batch_size, n_par), dtype=_np.complex128)
-
-        out.fill(0.0)
-
-        for b in range(batch_size):
-            for t in range(Smap.shape[0]):
-                for w in range(epsilon.shape[1]):
-                    derivative = _np.complex128(1.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            derivative *= epsilon[i, w, 0]
-                        else:
-                            derivative *= epsilon[i, w, 1]
-                    if w >= n_bond_amplitude:
-                        derivative *= 1.0j
-
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            if der_ids[i, w, 0] >= 0:
-                                if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
-                                    out[b, der_ids[i, w, 0]] += derivative/epsilon[i, w, 0]
-                                else:
-                                    der = _np.complex128(1.0)
-                                    for j in range(Smap.shape[1]):
-                                        if j != i:
-                                            if symSign[t] * x[b, Smap[t,j]] < 0:
-                                                der *= epsilon[j, w, 0]
-                                            else:
-                                                der *= epsilon[j, w, 1]
-                                    if w >= n_bond_amplitude:
-                                        der *= 1.0j
-                                    out[b, der_ids[i, w, 0]] += der
-                        else:
-                            if der_ids[i, w, 1] >= 0:
-                                if _np.abs(epsilon[i, w, 1]) > 1.e6*eps:
-                                    out[b, der_ids[i, w, 1]] += derivative/epsilon[i, w, 1]
-                                else:
-                                    der = _np.complex128(1.0)
-                                    for j in range(Smap.shape[1]):
-                                        if j != i:
-                                            if symSign[t] * x[b, Smap[t,j]] < 0:
-                                                der *= epsilon[j, w, 0]
-                                            else:
-                                                der *= epsilon[j, w, 1]
-                                    if w >= n_bond_amplitude:
-                                        der *= 1.0j
-                                    out[b, der_ids[i, w, 1]] += der
-        return out
-
-
-
-class QGPSPhaseSplitSumSymReg(QGPSPhaseSplit):
-    def __init__(self, hilbert, epsilon=None, n_bond_amplitude=None, n_bond_phase=None,
-                 automorphisms=None, spin_flip_sym=False, cluster_ids=None):
-        super().__init__(hilbert, epsilon=epsilon, n_bond_amplitude=n_bond_amplitude,
-                         n_bond_phase=n_bond_phase, automorphisms=automorphisms,
-                         spin_flip_sym=spin_flip_sym, cluster_ids=cluster_ids)
-
-    @staticmethod
-    @jit(nopython=True)
-    def _log_val_kernel(x, out, epsilon, n_bond_amplitude, Smap, symSign):
-        if out is None:
-            out = _np.empty(x.shape[0], dtype=_np.complex128)
-
-        for b in range(x.shape[0]):
-            out[b] = 0.0
-            for t in range(Smap.shape[0]):
-                arg_abs = _np.complex128(0.0)
-                arg_phase = _np.complex128(0.0)
-                for w in range(epsilon.shape[1]):
-                    innerprod = _np.complex128(1.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            innerprod *= epsilon[i, w, 0]
-                        else:
-                            innerprod *= epsilon[i, w, 1]
-                    if w >= n_bond_amplitude:
-                        arg_phase += innerprod
-                    else:
-                        arg_abs += innerprod
-                out[b] += _np.exp(-(arg_abs**2+1j*arg_phase**2))
-            out[b] = _np.log(out[b])
-        return out
-
-    @staticmethod
-    @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap, symSign, der_ids):
-        batch_size = x.shape[0]
-        eps = _np.finfo(_np.double).eps
-
-        if out is None:
-            out = _np.empty((batch_size, n_par), dtype=_np.complex128)
-
-        out.fill(0.0)
-
-        for b in range(batch_size):
-            value = _np.complex128(0.0)
-            for t in range(Smap.shape[0]):
-                argument_abs = _np.complex128(0.0)
-                argument_phase = _np.complex128(0.0)
-                for w in range(epsilon.shape[1]):
-                    innerargument = _np.complex128(1.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            innerargument *= epsilon[i, w, 0]
-                        else:
-                            innerargument *= epsilon[i, w, 1]
-                    if w >= n_bond_amplitude:
-                        argument_phase += innerargument
-                    else:
-                        argument_abs += innerargument
-                prefactor_abs = -2*argument_abs*_np.exp(-(argument_abs**2 + 1j*argument_phase**2))
-                prefactor_phase = -2j*argument_phase*_np.exp(-(argument_abs**2 + 1j*argument_phase**2))
-
-                for w in range(epsilon.shape[1]):
-                    derivative = _np.complex128(1.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            derivative *= epsilon[i, w, 0]
-                        else:
-                            derivative *= epsilon[i, w, 1]
-                    if w >= n_bond_amplitude:
-                        prefactor = prefactor_phase
-                    else:
-                        prefactor = prefactor_abs
-                
-
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            if der_ids[i, w, 0] >= 0:
-                                if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
-                                    out[b, der_ids[i, w, 0]] += prefactor * derivative/epsilon[i, w, 0]
-                                else:
-                                    der = _np.complex128(1.0)
-                                    for j in range(Smap.shape[1]):
-                                        if j != i:
-                                            if symSign[t] * x[b, Smap[t,j]] < 0:
-                                                der *= epsilon[j, w, 0]
-                                            else:
-                                                der *= epsilon[j, w, 1]
-                                    out[b, der_ids[i, w, 0]] += prefactor * der
-                        else:
-                            if der_ids[i, w, 1] >= 0:
-                                if _np.abs(epsilon[i, w, 1]) > 1.e6*eps:
-                                    out[b, der_ids[i, w, 1]] += prefactor * derivative/epsilon[i, w, 1]
-                                else:
-                                    der = _np.complex128(1.0)
-                                    for j in range(Smap.shape[1]):
-                                        if j != i:
-                                            if symSign[t] * x[b, Smap[t,j]] < 0:
-                                                der *= epsilon[j, w, 0]
-                                            else:
-                                                der *= epsilon[j, w, 1]
-                                    out[b, der_ids[i, w, 1]] += prefactor * der
-                value += _np.exp(-(argument_abs**2 + 1j*argument_phase**2))
-            out[b, :] /= value
-        return out
-    
-    def init_random_parameters(self, seed=None, sigma=0.1):
-        epsilon = _np.ones(self._epsilon.shape, dtype=self._npdtype)
-
-        if _rank == 0:
-            rgen = _np.random.default_rng(seed)
-            eps_shape = epsilon.shape
-            epsilon[:,:,:] += rgen.normal(scale=sigma, size=eps_shape)
-
-        if _n_nodes > 1:
-            _MPI_comm.Bcast(epsilon, root=0)
-            _MPI_comm.barrier()
-
-        self._epsilon = epsilon
-
-
-class QGPSPhaseSplitSumSymAltReg(QGPSPhaseSplit):
-    def __init__(self, hilbert, epsilon=None, n_bond_amplitude=None, n_bond_phase=None,
-                 automorphisms=None, spin_flip_sym=False, cluster_ids=None):
-        super().__init__(hilbert, epsilon=epsilon, n_bond_amplitude=n_bond_amplitude,
-                         n_bond_phase=n_bond_phase, automorphisms=automorphisms,
-                         spin_flip_sym=spin_flip_sym, cluster_ids=cluster_ids)
-
-    @staticmethod
-    @jit(nopython=True)
-    def _log_val_kernel(x, out, epsilon, n_bond_amplitude, Smap, symSign):
-        if out is None:
-            out = _np.empty(x.shape[0], dtype=_np.complex128)
-
-        for b in range(x.shape[0]):
-            out[b] = 0.0
-            for t in range(Smap.shape[0]):
-                arg_abs = _np.complex128(0.0)
-                arg_phase = _np.complex128(0.0)
-                for w in range(epsilon.shape[1]):
-                    innerprod = _np.complex128(1.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            innerprod *= epsilon[i, w, 0]
-                        else:
-                            innerprod *= epsilon[i, w, 1]
-                    if w >= n_bond_amplitude:
-                        arg_phase += innerprod**2
-                    else:
-                        arg_abs += innerprod**2
-                out[b] += _np.exp(-(arg_abs+1j*arg_phase))
-            out[b] = _np.log(out[b])
-        return out
-
-    @staticmethod
-    @jit(nopython=True)
-    def _der_log_kernel(x, out, epsilon, n_bond_amplitude, n_par, Smap, symSign, der_ids):
-        batch_size = x.shape[0]
-        eps = _np.finfo(_np.double).eps
-
-        if out is None:
-            out = _np.empty((batch_size, n_par), dtype=_np.complex128)
-
-        out.fill(0.0)
-
-        for b in range(batch_size):
-            value = _np.complex128(0.0)
-            for t in range(Smap.shape[0]):
-                argument_abs = _np.complex128(0.0)
-                argument_phase = _np.complex128(0.0)
-                for w in range(epsilon.shape[1]):
-                    innerargument = _np.complex128(1.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            innerargument *= epsilon[i, w, 0]
-                        else:
-                            innerargument *= epsilon[i, w, 1]
-                    if w >= n_bond_amplitude:
-                        argument_phase += innerargument**2
-                    else:
-                        argument_abs += innerargument**2
-                prefactor_abs = -2*_np.exp(-(argument_abs + 1j*argument_phase))
-                prefactor_phase = -2j*_np.exp(-(argument_abs + 1j*argument_phase))
-
-                for w in range(epsilon.shape[1]):
-                    derivative = _np.complex128(1.0)
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            derivative *= epsilon[i, w, 0]
-                        else:
-                            derivative *= epsilon[i, w, 1]
-                    if w >= n_bond_amplitude:
-                        prefactor = prefactor_phase
-                    else:
-                        prefactor = prefactor_abs
-
-                    for i in range(Smap.shape[1]):
-                        if symSign[t] * x[b, Smap[t,i]] < 0:
-                            if der_ids[i, w, 0] >= 0:
-                                if _np.abs(epsilon[i, w, 0]) > 1.e2*eps:
-                                    out[b, der_ids[i, w, 0]] += prefactor * (derivative**2)/epsilon[i, w, 0]
-                        else:
-                            if der_ids[i, w, 1] >= 0:
-                                if _np.abs(epsilon[i, w, 1]) > 1.e2*eps:
-                                    out[b, der_ids[i, w, 1]] += prefactor * (derivative**2)/epsilon[i, w, 1]
-                value += _np.exp(-(argument_abs + 1j*argument_phase))
-            out[b, :] /= value
-        return out
-    
-    def init_random_parameters(self, seed=None, sigma=0.1):
-        epsilon = _np.ones(self._epsilon.shape, dtype=self._npdtype)
-
-        if _rank == 0:
-            rgen = _np.random.default_rng(seed)
-            eps_shape = epsilon.shape
-            epsilon[:,:,:] += rgen.normal(scale=sigma, size=eps_shape)
-
-        if _n_nodes > 1:
-            _MPI_comm.Bcast(epsilon, root=0)
-            _MPI_comm.barrier()
-
-        self._epsilon = epsilon
-
 
 
 class QGPSLinExp(AbstractMachine):
