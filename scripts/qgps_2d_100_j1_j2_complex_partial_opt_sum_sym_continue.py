@@ -7,9 +7,13 @@ import symmetries
 
 N = int(sys.argv[1])
 J2 = float(sys.argv[2])
-read_file  = sys.argv[3]
+read_file = sys.argv[3]
+change_to_exp_form = bool(int(sys.argv[4]))
 
 eps_read_in = np.load(read_file)
+
+if change_to_exp_form:
+    eps_read_in = log(eps_read_in)
 
 J1 = 1.0
 
@@ -66,7 +70,7 @@ transl = symmetries.get_symms_square_lattice(L)
 ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
 ma.init_random_parameters(sigma=0.05, start_from_uniform=False)
 
-ma._epsilon[0, :, :] = 0.
+ma._epsilon[0, :, :] -= 10.
 ma._epsilon[:, :30, :] = eps_read_in
 ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
 
@@ -139,7 +143,7 @@ class BondSweepOpt(nk.Vmc):
 samples = 10000
 
 # Create the optimization driver
-gs = BondSweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
+gs = SiteSweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
