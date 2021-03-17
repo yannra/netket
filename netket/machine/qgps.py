@@ -100,9 +100,9 @@ class QGPS(AbstractMachine):
 
             if _rank == 0:
                 rgen = _np.random.default_rng(seed)
-                epsilon[:,:,:] += rgen.normal(scale=sigma, size=(epsilon.shape[1], epsilon.shape[2]))
+                epsilon += rgen.normal(scale=sigma, size=epsilon.shape)
                 if self._dtype == complex:
-                    epsilon[0,:,:] += 1j*rgen.normal(scale=sigma, size=(epsilon.shape[1], epsilon.shape[2]))
+                    epsilon += 1j*rgen.normal(scale=sigma, size=epsilon.shape)
                 if start_from_uniform:
                     epsilon[1:,:,:] = 0.
         else:
