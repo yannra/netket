@@ -68,9 +68,8 @@ for mat, site in zip(mats, sites):
 transl = symmetries.get_symms_square_lattice(L)
 
 ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-ma.init_random_parameters(sigma=0.05, start_from_uniform=False)
+ma.init_random_parameters(sigma=0.05, start_from_uniform=True)
 
-ma._epsilon[0, :, :] -= 10.
 ma._epsilon[:, :30, :] = eps_read_in
 ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
 
