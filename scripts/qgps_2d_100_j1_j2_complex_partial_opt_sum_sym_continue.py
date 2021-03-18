@@ -9,6 +9,7 @@ N = int(sys.argv[1])
 J2 = float(sys.argv[2])
 read_file = sys.argv[3]
 change_to_exp_form = bool(int(sys.argv[4]))
+small_shift = bool(int(sys.argv[5]))
 
 eps_read_in = np.load(read_file)
 
@@ -70,7 +71,11 @@ transl = symmetries.get_symms_square_lattice(L)
 ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
 ma.init_random_parameters(sigma=0.05, start_from_uniform=False)
 
-ma._epsilon[0, :, :] -= 5.
+if small_shift:
+    ma._epsilon[0, :, :] -= 1.5
+else:
+    ma._epsilon[0, :, :] -= 5.
+
 
 ma._epsilon[:, :30, :] = eps_read_in
 ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
