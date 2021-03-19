@@ -71,7 +71,7 @@ sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
 sa.reset(True)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma, use_iterative=False, diag_shift=0.05)
+sr = nk.optimizer.SR(ma)
 
 
 max_opt = 2500
