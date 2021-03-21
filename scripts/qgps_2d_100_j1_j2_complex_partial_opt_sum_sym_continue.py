@@ -89,10 +89,10 @@ sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
 sa.reset(True)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma, use_iterative=False)
+sr = nk.optimizer.SR(ma)
 
 
-max_opt = 2500
+max_opt = 3000
 
 arr = np.zeros(ma._epsilon.size, dtype=bool)
 arr[:max_opt] = True
@@ -105,6 +105,7 @@ class SiteSweepOpt(nk.Vmc):
         for _ in range(0, n_steps, step):
             for i in range(0, step):
                 ma.change_opt_ids(arr.reshape(ma._epsilon.shape))
+                sr._x0 = None
                 dp = self._forward_and_backward()
                 self.update_parameters(dp)
                 arr.fill(False)
@@ -132,6 +133,7 @@ class BondSweepOpt(nk.Vmc):
                             shape_array[j,k,l] = arr[arr_count]
                             arr_count += 1
                 ma.change_opt_ids(shape_array)
+                sr._x0 = None
                 dp = self._forward_and_backward()
                 self.update_parameters(dp)
                 arr.fill(False)
