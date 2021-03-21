@@ -146,7 +146,7 @@ class BondSweepOpt(nk.Vmc):
                 count += 1
 
 
-samples = 10000
+samples = 20000
 
 # Create the optimization driver
 gs = SiteSweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
