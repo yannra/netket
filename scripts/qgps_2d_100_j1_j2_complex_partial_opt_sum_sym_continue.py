@@ -77,12 +77,12 @@ else:
     ma._epsilon[0, :, :] -= 5.
 
 
-ma._epsilon[:, :30, :] = eps_read_in
+ma._epsilon[:, :100, :] = eps_read_in
 ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
 
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.03)
+op = nk.optimizer.Sgd(ma, learning_rate=0.02)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
@@ -151,7 +151,7 @@ class BondSweepOpt(nk.Vmc):
 samples = 20000
 
 # Create the optimization driver
-gs = SiteSweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
+gs = BondSweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
