@@ -82,7 +82,7 @@ ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
 
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.02)
+op = nk.optimizer.Sgd(ma, learning_rate=0.01)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
