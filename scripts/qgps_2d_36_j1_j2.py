@@ -67,12 +67,8 @@ if mode == 0:
     ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
 elif mode == 1:
     ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-elif mode == 2:
-    ma = nk.machine.QGPSSumSymExp(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-else:
-    ma = nk.machine.QGPSProdSymExp(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
 
-ma.init_random_parameters(sigma=0.1)
+ma.init_random_parameters(sigma=0.05, start_from_uniform=True)
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.02)
@@ -82,10 +78,10 @@ sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
 sa.reset(True)
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma, use_iterative=False)
+sr = nk.optimizer.SR(ma)
 
 
-max_opt = 2500
+max_opt = 3000
 
 arr = np.zeros(ma._epsilon.size, dtype=bool)
 arr[:max_opt] = True
@@ -98,6 +94,7 @@ class SiteSweepOpt(nk.Vmc):
         for _ in range(0, n_steps, step):
             for i in range(0, step):
                 ma.change_opt_ids(arr.reshape(ma._epsilon.shape))
+                sr._x0 = None
                 dp = self._forward_and_backward()
                 self.update_parameters(dp)
                 arr.fill(False)
@@ -111,16 +108,47 @@ class SiteSweepOpt(nk.Vmc):
                     yield self.step_count
                 count += 1
 
+class BondSweepOpt(nk.Vmc):
+    def iter(self, n_steps, step=1):
+        global max_id
+        count = 0
+        for _ in range(0, n_steps, step):
+            for i in range(0, step):
+                shape_array = np.zeros(ma._epsilon.shape, dtype=bool)
+                arr_count = 0
+                for k in range(ma._epsilon.shape[1]):
+                    for j in range(ma._epsilon.shape[0]):
+                        for l in range(ma._epsilon.shape[2]):
+                            shape_array[j,k,l] = arr[arr_count]
+                            arr_count += 1
+                ma.change_opt_ids(shape_array)
+                sr._x0 = None
+                dp = self._forward_and_backward()
+                self.update_parameters(dp)
+                arr.fill(False)
+                arr[max_id:(max_id+max_opt)] = True
+                if max_id + max_opt > arr.size:
+                    arr[:(max_id + max_opt - arr.size)] = True
+                    max_id = min((max_id + max_opt - arr.size), arr.size)
+                else:
+                    max_id = min((max_id + max_opt), arr.size)
+                if i == 0:
+                    yield self.step_count
+                count += 1
+
+
 samples = 10000
 
 # Create the optimization driver
-gs = SiteSweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr)
+gs = BondSweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
         fl.write("")
 
-for it in gs.iter(2450,1):
+samp = max(2450, ma._epsilon.size//2)
+
+for it in gs.iter(samp,1):
     if mpi.COMM_WORLD.Get_rank() == 0:
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
