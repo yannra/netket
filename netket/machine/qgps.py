@@ -80,6 +80,8 @@ class QGPS(AbstractMachine):
         self._ref_conf = None
         self._Smap_inverse = -1 * _np.ones((self._Smap.shape[0], self._Smap.max()+1), dtype=_np.int)
 
+        self._fast_update = True
+
         for i in range(self._Smap.shape[0]):
             for j in range(self._Smap.shape[1]):
                 self._Smap_inverse[i, self._Smap[i,j]] = j
@@ -154,7 +156,7 @@ class QGPS(AbstractMachine):
             matrix.
         """
         start = time.time()
-        if self._ref_conf is None:
+        if self._ref_conf is None or not self._fast_update:
             if len(x.shape) > 1:
                 self._ref_conf = x[0,:].copy()
             else:
@@ -183,7 +185,7 @@ class QGPS(AbstractMachine):
             `out`
         """
         start = time.time()
-        if self._ref_conf is None:
+        if self._ref_conf is None or not self._fast_update:
             if len(x.shape) > 1:
                 self._ref_conf = x[0,:].copy()
             else:
