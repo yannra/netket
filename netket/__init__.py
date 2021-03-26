@@ -27,6 +27,7 @@ __all__ = [
     # "supervised",
     "utils",
     "variational",
+    "custom",
 ]
 
 from . import (
@@ -59,3 +60,5 @@ from .vmc_common import (
     tree_map as _tree_map,
     trees2_map as _trees2_map,
 )
+
+from . import custom
