@@ -102,7 +102,7 @@ class LinMethod(Vmc):
         best_e = None
 
         energies = []
-        shift_vals = (self._stab_shift, self._stab_shift/10, self._stab_shift * 10)
+        shift_vals = (self._stab_shift, self._stab_shift/5, self._stab_shift * 5)
 
         for shift in shift_vals:
             dp = self.get_parameter_update(H_full, S_full, shift)
