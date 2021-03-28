@@ -154,7 +154,6 @@ class LinMethod(Vmc):
                 best_dp = dp
 
         self._stab_shift = best_shift
-        print()
         return best_dp
 
     def _forward_and_backward(self):
