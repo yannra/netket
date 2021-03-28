@@ -119,7 +119,7 @@ for it in gs.iter(450,1):
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
-        with open("stab_par.txt", "w") as fl:
+        with open("stab_par.txt", "a") as fl:
             fl.write("{}\n".format(gs._stab_shift))
 
 epsilon_avg = np.zeros(ma._epsilon.shape, dtype=ma._epsilon.dtype)
@@ -132,6 +132,8 @@ for it in gs.iter(50,1):
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
+        with open("stab_par.txt", "a") as fl:
+            fl.write("{}\n".format(gs._stab_shift))
 
 epsilon_avg /= 50
 
