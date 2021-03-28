@@ -93,14 +93,10 @@ sa.reset(True)
 
 max_opt = 1500
 
-arr = np.zeros(ma._epsilon.size, dtype=bool)
-arr[:max_opt] = True
-max_id = min(max_opt, arr.size)
-
 samples = 15000
 
 # Create the optimization driver
-gs = SweepOptLinMethod(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, n_discard=50, epsilon=0.5)
+gs = SweepOptLinMethod(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, n_discard=50, epsilon=0.5, max_opt = max_opt)
 
 gs._stab_shift = 0.1
 
