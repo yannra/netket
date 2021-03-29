@@ -116,56 +116,92 @@ class LinMethod(Vmc):
         best_e = None
 
         energies = []
-        shift_vals = (self._stab_shift, self._stab_shift/5, self._stab_shift * 5)
+        shifts = []
+        test_shift = self._stab_shift
+        count = 0
+        valid_result = False
 
-        for shift in shift_vals:
-            dp = self.get_parameter_update(H_full, S_full, shift)
+        while not valid_result:
+            dp = self.get_parameter_update(H_full, S_full, test_shift)
             self.machine.parameters += dp
 
-            if samples is None:
+            try:
                 self._sampler.generate_samples(self._n_discard)
                 samples = self._sampler.generate_samples(self._n_corr_samples_node)
                 samples = samples.reshape((-1, samples.shape[-1]))
                 ref_amplitudes = self.machine.log_val(samples)
                 amplitudes = ref_amplitudes.copy()
-            else:
-                amplitudes = self.machine.log_val(samples)
-            
-            e_new = self.correlated_en_estimation(samples, ref_amplitudes, amplitudes).real
+                e_new = self.correlated_en_estimation(samples, ref_amplitudes, amplitudes).real
+                valid_result = True
+            except:
+                valid_result = False
+
             self.machine.parameters -= dp
 
-            energies.append(e_new)
+            if valid_result:
+                energies.append(e_new)
+                shifts.append(test_shift)
+                best_e = e_new
+                best_shift = test_shift
+                best_dp = dp
+            else:
+                test_shift *= 10
+            count += 1
+            assert(count < 10)
+        
+        for shift in (test_shift/10, test_shift * 10):
+            dp = self.get_parameter_update(H_full, S_full, shift)
+            self.machine.parameters += dp
 
-            if best_e is None:
-                best_e = e_new
-                best_shift = shift
-                best_dp = dp
-            elif e_new < best_e:
-                best_e = e_new
-                best_shift = shift
-                best_dp = dp
+            try:
+                amplitudes = self.machine.log_val(samples)
+                e_new = self.correlated_en_estimation(samples, ref_amplitudes, amplitudes).real
+                valid_result = True
+            except:
+                valid_result = False
+
+            self.machine.parameters -= dp
+
+            if valid_result:
+                energies.append(e_new)
+                shifts.append(shift)
+                if e_new < best_e:
+                    best_e = e_new
+                    best_shift = shift
+                    best_dp = dp
+
         
         # parabolic interpolation if central shift gives largest improvement
-        if energies[0] < energies[1] and energies[0] < energies[2]:
-            interpolation_num = (energies[1] - energies[0]) * (np.log(shift_vals[2]) - np.log(shift_vals[0]))**2
-            interpolation_num -= (energies[2] - energies[0]) * (np.log(shift_vals[1]) - np.log(shift_vals[0]))**2
+        if len(energies) == 3:
+            if energies[0] < energies[1] and energies[0] < energies[2]:
+                interpolation_num = (energies[1] - energies[0]) * (np.log(shifts[2]) - np.log(shifts[0]))**2
+                interpolation_num -= (energies[2] - energies[0]) * (np.log(shifts[0]) - np.log(shifts[1]))**2
 
-            interpolation_denom = (energies[1] - energies[0]) * (np.log(shift_vals[2]) - np.log(shift_vals[0]))
-            interpolation_denom -= (energies[2] - energies[0]) * (np.log(shift_vals[1]) - np.log(shift_vals[0]))
+                interpolation_denom = (energies[1] - energies[0]) * (np.log(shifts[2]) - np.log(shifts[0]))
+                interpolation_denom += (energies[2] - energies[0]) * (np.log(shifts[0]) - np.log(shifts[1]))
 
-            interpolated_shift = np.exp(np.log(shift_vals[0]) + 0.5 * interpolation_num/interpolation_denom)
+                interpolated_shift = np.exp(np.log(shifts[1]) + 0.5 * interpolation_num/interpolation_denom)
 
-            dp = self.get_parameter_update(H_full, S_full, interpolated_shift)
+                dp = self.get_parameter_update(H_full, S_full, interpolated_shift)
 
-            self.machine.parameters += dp
-            amplitudes = self.machine.log_val(samples)
-            e_new = self.correlated_en_estimation(samples, ref_amplitudes, amplitudes).real
-            self.machine.parameters -= dp
+                self.machine.parameters += dp
 
-            if e_new < best_e:
-                best_e = e_new
-                best_shift = interpolated_shift
-                best_dp = dp
+                valid_result = False
+
+                try:
+                    amplitudes = self.machine.log_val(samples)
+                    e_new = self.correlated_en_estimation(samples, ref_amplitudes, amplitudes).real
+                    valid_result = True
+                except:
+                    valid_result = False
+
+                self.machine.parameters -= dp
+
+                if valid_result:
+                    if e_new < best_e:
+                        best_e = e_new
+                        best_shift = interpolated_shift
+                        best_dp = dp
 
         self._stab_shift = best_shift
         return best_dp
