@@ -71,7 +71,7 @@ elif mode == 1:
 
 ma._exp_kern_representation = False
 
-ma.init_random_parameters(sigma=0.05, start_from_uniform=False)
+ma.init_random_parameters(sigma=0.1, start_from_uniform=False)
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=1.0)
