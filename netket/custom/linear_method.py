@@ -10,12 +10,19 @@ from netket.stats import (
     sum_inplace as _sum_inplace,
 )
 
+from netket.utils import (
+    MPI_comm as _MPI_comm,
+    n_nodes as _n_nodes,
+    node_number as _rank
+)
+
 import numpy as np
 from scipy.linalg import eig
 
 from netket.vmc_common import info, tree_map
 from netket import Vmc
 from netket.abstract_variational_driver import AbstractVariationalDriver
+from threadpoolctl import threadpool_limits
 
 
 class LinMethod(Vmc):
@@ -53,45 +60,52 @@ class LinMethod(Vmc):
 
         en_stats = _statistics(loc_en.T)
 
-        E0 = en_stats.mean
-        oks_mean = _mean(oks, axis=0)
-        der_loc_en_mean = _mean(der_loc_en, axis=0)
-        ok_loc_en_mean = _mean((oks.conj().T * loc_en).T, axis=0)
+        with threadpool_limits(limits=1):
+            E0 = en_stats.mean
+            oks_mean = _mean(oks, axis=0)
+            der_loc_en_mean = _mean(der_loc_en, axis=0)
+            ok_loc_en_mean = _mean((oks.conj().T * loc_en).T, axis=0)
 
-        n_samp = _sum_inplace(np.atleast_1d(oks.shape[0]))
+            n_samp = _sum_inplace(np.atleast_1d(oks.shape[0]))
 
-        overlapmat = np.matmul(oks.conj().T, oks)
-        overlapmat = _sum_inplace(overlapmat)
-        overlapmat /= float(n_samp)
-        S = overlapmat - np.outer(oks_mean.conj(), oks_mean)
+            overlapmat = np.matmul(oks.conj().T, oks)
+            overlapmat = _sum_inplace(overlapmat)
+            overlapmat /= float(n_samp)
+            S = overlapmat - np.outer(oks_mean.conj(), oks_mean)
 
-        Gr = der_loc_en_mean - E0 * oks_mean
+            Gr = der_loc_en_mean - E0 * oks_mean
 
-        Gc = ok_loc_en_mean - E0 * oks_mean.conj()
+            Gc = ok_loc_en_mean - E0 * oks_mean.conj()
 
-        h_matr = np.matmul(oks.conj().T, der_loc_en)/n_samp
-        h_matr = _sum_inplace(h_matr)
-        h_matr /= float(n_samp)
-        h_matr -= np.outer(ok_loc_en_mean, oks_mean)
-        h_matr -= np.outer(oks_mean.conj(), der_loc_en_mean)
-        h_matr += np.outer(oks_mean.conj(), oks_mean)*E0
+            h_matr = np.matmul(oks.conj().T, der_loc_en)/n_samp
+            h_matr = _sum_inplace(h_matr)
+            h_matr /= float(n_samp)
+            h_matr -= np.outer(ok_loc_en_mean, oks_mean)
+            h_matr -= np.outer(oks_mean.conj(), der_loc_en_mean)
+            h_matr += np.outer(oks_mean.conj(), oks_mean)*E0
 
-        S_full = np.block([[np.ones((1,1)), np.zeros((1, S.shape[0]))],[np.zeros((S.shape[0],1)), S]])
-        H_full = np.block([[E0 * np.ones((1,1)), Gr.reshape((1, len(Gr)))],[Gc.reshape((len(Gc), 1)), h_matr]])
+            S_full = np.block([[np.ones((1,1)), np.zeros((1, S.shape[0]))],[np.zeros((S.shape[0],1)), S]])
+            H_full = np.block([[E0 * np.ones((1,1)), Gr.reshape((1, len(Gr)))],[Gc.reshape((len(Gc), 1)), h_matr]])
 
         return (S_full, H_full, en_stats)
 
     def get_parameter_update(self, H, S, shift):
-        H_mat = H + np.eye(H.shape[0]) * shift
-        H_mat[0,0] -= shift
-        eigs = eig(H_mat, S)
-        phys_sensible_ids = np.logical_and(abs(eigs[0].imag) < 1, abs(eigs[0]) < 1.e5)
-        i = eigs[0][phys_sensible_ids].real.argsort()[0]
-        dp = eigs[1][:,phys_sensible_ids][:,i]
-        dp /= dp[0]
-        N = ((1-self._epsilon) * S[1:,1:].dot(dp[1:]))/((1-self._epsilon)+ self._epsilon * np.sqrt(1+ dp[1:].conj().dot(S[1:,1:].dot(dp[1:]))))
-
-        return (dp[1:] / (1- N.dot(dp[1:])))
+        par_change = np.zeros(H.shape[0]-1, dtype=complex)
+        if _rank == 0:
+            H_mat = H + np.eye(H.shape[0]) * shift
+            H_mat[0,0] -= shift
+            eigs = eig(H_mat, S)
+            phys_sensible_ids = np.logical_and(abs(eigs[0].imag) < 1, abs(eigs[0]) < 1.e5)
+            i = eigs[0][phys_sensible_ids].real.argsort()[0]
+            dp = eigs[1][:,phys_sensible_ids][:,i]
+            dp /= dp[0]
+            N = ((1-self._epsilon) * S[1:,1:].dot(dp[1:]))/((1-self._epsilon)+ self._epsilon * np.sqrt(1+ dp[1:].conj().dot(S[1:,1:].dot(dp[1:]))))
+            par_change = (dp[1:] / (1- N.dot(dp[1:])))
+        
+        if _n_nodes > 1:
+            _MPI_comm.Bcast(par_change, root=0)
+            _MPI_comm.barrier()
+        return par_change
 
     def correlated_en_estimation(self, samples, ref_amplitudes, amplitudes):
         ratios = np.exp(2 * (amplitudes-ref_amplitudes).real)
