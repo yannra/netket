@@ -91,14 +91,12 @@ sa.reset(True)
 
 
 
-max_opt = 1500
+max_opt = 2000
 
 samples = 15000
 
 # Create the optimization driver
-gs = SweepOptLinMethod(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, n_discard=50, epsilon=0.5, max_opt = max_opt)
-
-gs._stab_shift = 0.1
+gs = SweepOptLinMethod(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, n_discard=50, epsilon=0.5, max_opt = max_opt, shift=0.1)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
@@ -117,6 +115,8 @@ for it in gs.iter(450,1):
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
         with open("stab_par.txt", "a") as fl:
             fl.write("{}\n".format(gs._stab_shift))
+    if gs._stab_shift > 0.1:
+        gs._stab_shift = 0.1
 
 epsilon_avg = np.zeros(ma._epsilon.shape, dtype=ma._epsilon.dtype)
 
@@ -130,6 +130,8 @@ for it in gs.iter(50,1):
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
         with open("stab_par.txt", "a") as fl:
             fl.write("{}\n".format(gs._stab_shift))
+    if gs._stab_shift > 0.1:
+        gs._stab_shift = 0.1
 
 epsilon_avg /= 50
 
