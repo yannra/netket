@@ -63,12 +63,14 @@ class SweepOptLinMethod(LinMethod):
         epsilon = 0.5,
         update_shift = True,
         corr_samp = None,
+        rescale_update = True,
         n_discard=None,
         max_opt = 3000,
         sweep_by_bonds = True,
     ):
         super().__init__(hamiltonian, sampler, optimizer, n_samples, shift=shift, epsilon=epsilon,
-                         update_shift=update_shift, corr_samp=corr_samp, n_discard=n_discard)
+                         update_shift=update_shift, corr_samp=corr_samp, rescale_update=rescale_update,
+                         n_discard=n_discard)
         self.max_opt = max_opt
 
         self.opt_arr = np.zeros(self._sampler._machine._epsilon.size, dtype=bool)

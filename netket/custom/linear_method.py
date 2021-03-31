@@ -40,6 +40,7 @@ class LinMethod(Vmc):
         epsilon = 0.5,
         update_shift = True,
         corr_samp = None,
+        rescale_update=True,
         n_discard=None,
     ):
         super().__init__(hamiltonian, sampler, optimizer, n_samples, n_discard=n_discard)
@@ -53,6 +54,8 @@ class LinMethod(Vmc):
         n_corr_samples_chain = int(math.ceil((corr_samples / self._batch_size)))
         self._n_corr_samples_node = int(math.ceil(n_corr_samples_chain / self.n_nodes))
         self._n_corr_samples = int(self._n_corr_samples_node * self._batch_size * self.n_nodes)
+        self.linear_params = np.zeros(len(self.machine.parameters), dtype=bool)
+        self.rescale_update = rescale_update
 
     def get_lin_method_matrices(self, samples):
         oks = self.machine.der_log(samples)
@@ -87,9 +90,9 @@ class LinMethod(Vmc):
             S_full = np.block([[np.ones((1,1)), np.zeros((1, S.shape[0]))],[np.zeros((S.shape[0],1)), S]])
             H_full = np.block([[E0 * np.ones((1,1)), Gr.reshape((1, len(Gr)))],[Gc.reshape((len(Gc), 1)), h_matr]])
 
-        return (S_full, H_full, en_stats)
+        return (S_full, H_full, oks_mean, en_stats)
 
-    def get_parameter_update(self, H, S, shift):
+    def get_parameter_update(self, H, S, oks_mean, shift):
         par_change = np.zeros(H.shape[0]-1, dtype=complex)
         if _rank == 0:
             H_mat = H + np.eye(H.shape[0]) * shift
@@ -99,8 +102,18 @@ class LinMethod(Vmc):
             i = eigs[0][phys_sensible_ids].real.argsort()[0]
             dp = eigs[1][:,phys_sensible_ids][:,i]
             dp /= dp[0]
-            N = ((1-self._epsilon) * S[1:,1:].dot(dp[1:]))/((1-self._epsilon)+ self._epsilon * np.sqrt(1+ dp[1:].conj().dot(S[1:,1:].dot(dp[1:]))))
-            par_change = (dp[1:] / (1- N.dot(dp[1:])))
+            N = np.zeros(len(self.linear_params), dtype=dp.dtype)
+            dp_reduced = dp[1:]
+            if self.rescale_update:
+                S_reduced = S[1:,1:]
+                non_lin = ~self.linear_params
+
+                N[non_lin] = -(((1-self._epsilon) * S_reduced[non_lin, non_lin].dot(dp_reduced[non_lin]))/((1-self._epsilon)+ self._epsilon * np.sqrt(1+ dp_reduced[non_lin].conj().dot(S_reduced[non_lin, non_lin].dot(dp_reduced[non_lin]))))).conj()
+                N[self.linear_params] = oks_mean[self.linear_params]
+                par_change = (dp_reduced / (1 - N.dot(dp_reduced)))
+            else:
+                par_change = dp_reduced
+
         
         if _n_nodes > 1:
             _MPI_comm.Bcast(par_change, root=0)
@@ -111,7 +124,7 @@ class LinMethod(Vmc):
         ratios = np.exp(2 * (amplitudes-ref_amplitudes).real)
         return (_mean(_local_values(self._ham, self.machine, samples) * ratios)/_mean(ratios))
 
-    def recalculate_shift(self, H_full, S_full):
+    def recalculate_shift(self, H_full, S_full, oks_mean):
         samples = None
         best_e = None
 
@@ -122,7 +135,7 @@ class LinMethod(Vmc):
         valid_result = False
 
         while not valid_result:
-            dp = self.get_parameter_update(H_full, S_full, test_shift)
+            dp = self.get_parameter_update(H_full, S_full, oks_mean, test_shift)
             self.machine.parameters += dp
 
             try:
@@ -150,7 +163,7 @@ class LinMethod(Vmc):
             assert(count < 10)
         
         for shift in (test_shift/10, test_shift * 10):
-            dp = self.get_parameter_update(H_full, S_full, shift)
+            dp = self.get_parameter_update(H_full, S_full, oks_mean, shift)
             self.machine.parameters += dp
 
             try:
@@ -182,7 +195,7 @@ class LinMethod(Vmc):
 
                 interpolated_shift = np.exp(np.log(shifts[1]) + 0.5 * interpolation_num/interpolation_denom)
 
-                dp = self.get_parameter_update(H_full, S_full, interpolated_shift)
+                dp = self.get_parameter_update(H_full, S_full, oks_mean, interpolated_shift)
 
                 self.machine.parameters += dp
 
@@ -219,11 +232,11 @@ class LinMethod(Vmc):
 
         samples_r = self._samples.reshape((-1, self._samples.shape[-1]))
 
-        S_full, H_full, self._loss_stats = self.get_lin_method_matrices(samples_r)
+        S_full, H_full, oks_mean, self._loss_stats = self.get_lin_method_matrices(samples_r)
 
         if self.update_shift:
-            self._dp = self.recalculate_shift(H_full, S_full)
+            self._dp = self.recalculate_shift(H_full, S_full, oks_mean)
         else:
-            self._dp = self.get_parameter_update(H_full, S_full, self._stab_shift)
+            self._dp = self.get_parameter_update(H_full, S_full, oks_mean, self._stab_shift)
 
         return -self._dp
