@@ -69,7 +69,7 @@ for mat, site in zip(mats, sites):
 transl = symmetries.get_symms_square_lattice(L)
 
 ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-ma.init_random_parameters(sigma=0.05, start_from_uniform=False)
+ma.init_random_parameters(sigma=0.01, start_from_uniform=False)
 
 if small_shift:
     ma._epsilon[0, :, :] -= 1.5
@@ -82,7 +82,7 @@ ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
 
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.03)
+op = nk.optimizer.Sgd(ma, learning_rate=0.02)
 
 # Sampler
 sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2, n_chains=1)
@@ -92,66 +92,16 @@ sa.reset(True)
 sr = nk.optimizer.SR(ma)
 
 
-max_opt = 3000
+max_opt = 4000
 
 arr = np.zeros(ma._epsilon.size, dtype=bool)
 arr[:max_opt] = True
 max_id = min(max_opt, arr.size)
 
-class SiteSweepOpt(nk.Vmc):
-    def iter(self, n_steps, step=1):
-        global max_id
-        count = 0
-        for _ in range(0, n_steps, step):
-            for i in range(0, step):
-                ma.change_opt_ids(arr.reshape(ma._epsilon.shape))
-                sr._x0 = None
-                dp = self._forward_and_backward()
-                self.update_parameters(dp)
-                arr.fill(False)
-                arr[max_id:(max_id+max_opt)] = True
-                if max_id + max_opt > arr.size:
-                    arr[:(max_id + max_opt - arr.size)] = True
-                    max_id = min((max_id + max_opt - arr.size), arr.size)
-                else:
-                    max_id = min((max_id + max_opt), arr.size)
-                if i == 0:
-                    yield self.step_count
-                count += 1
-
-class BondSweepOpt(nk.Vmc):
-    def iter(self, n_steps, step=1):
-        global max_id
-        count = 0
-        for _ in range(0, n_steps, step):
-            for i in range(0, step):
-                shape_array = np.zeros(ma._epsilon.shape, dtype=bool)
-                arr_count = 0
-                for k in range(ma._epsilon.shape[1]):
-                    for j in range(ma._epsilon.shape[0]):
-                        for l in range(ma._epsilon.shape[2]):
-                            shape_array[j,k,l] = arr[arr_count]
-                            arr_count += 1
-                ma.change_opt_ids(shape_array)
-                sr._x0 = None
-                dp = self._forward_and_backward()
-                self.update_parameters(dp)
-                arr.fill(False)
-                arr[max_id:(max_id+max_opt)] = True
-                if max_id + max_opt > arr.size:
-                    arr[:(max_id + max_opt - arr.size)] = True
-                    max_id = min((max_id + max_opt - arr.size), arr.size)
-                else:
-                    max_id = min((max_id + max_opt), arr.size)
-                if i == 0:
-                    yield self.step_count
-                count += 1
-
-
 samples = 10000
 
 # Create the optimization driver
-gs = BondSweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
+gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
