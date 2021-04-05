@@ -38,7 +38,7 @@ class SweepOpt(nk.Vmc):
 
                 self._sampler._machine.change_opt_ids(opt_tensor)
                 if self.sr is not None and self.max_opt < self.opt_arr.size:
-                    self.optimizer.sr._x0 = None
+                    self.sr._x0 = None
                 dp = self._forward_and_backward()
                 self.update_parameters(dp)
                 self.opt_arr.fill(False)
