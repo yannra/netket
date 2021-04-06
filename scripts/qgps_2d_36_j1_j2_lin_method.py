@@ -85,7 +85,7 @@ max_opt = 1500
 
 samples = 10000
 # Create the optimization driver
-gs = SweepOptLinMethod(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, n_discard=50, epsilon=0.5, max_opt = max_opt, shift = 0.1)
+gs = SweepOptLinMethod(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, n_discard=50, epsilon=0.5, max_opt = max_opt, shift = 0.1, rescale_update=False)
 
 
 if mpi.COMM_WORLD.Get_rank() == 0:
