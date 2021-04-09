@@ -77,7 +77,7 @@ else:
     ma._epsilon[0, :, :] -= 5.
 
 
-ma._epsilon[:, :100, :] = eps_read_in
+ma._epsilon[:, :eps_read_in.shape[1], :] = eps_read_in
 ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
 
 
