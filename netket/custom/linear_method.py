@@ -135,21 +135,22 @@ class LinMethod(Vmc):
         valid_result = False
 
         while not valid_result:
-            dp = self.get_parameter_update(H_full, S_full, oks_mean, test_shift)
-            self.machine.parameters += dp
-
             try:
-                self._sampler.generate_samples(self._n_discard)
-                samples = self._sampler.generate_samples(self._n_corr_samples_node)
-                samples = samples.reshape((-1, samples.shape[-1]))
-                ref_amplitudes = self.machine.log_val(samples)
-                amplitudes = ref_amplitudes.copy()
-                e_new = self.correlated_en_estimation(samples, ref_amplitudes, amplitudes).real
-                valid_result = True
+                dp = self.get_parameter_update(H_full, S_full, oks_mean, test_shift)
+                self.machine.parameters += dp
+                try:
+                    self._sampler.generate_samples(self._n_discard)
+                    samples = self._sampler.generate_samples(self._n_corr_samples_node)
+                    samples = samples.reshape((-1, samples.shape[-1]))
+                    ref_amplitudes = self.machine.log_val(samples)
+                    amplitudes = ref_amplitudes.copy()
+                    e_new = self.correlated_en_estimation(samples, ref_amplitudes, amplitudes).real
+                    valid_result = True
+                except:
+                    valid_result = False
+                self.machine.parameters -= dp
             except:
                 valid_result = False
-
-            self.machine.parameters -= dp
 
             if valid_result:
                 energies.append(e_new)
