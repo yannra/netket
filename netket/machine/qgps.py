@@ -486,6 +486,296 @@ class QGPSSumSym(QGPS):
         return out
 
 
+class QGPSBasisSym(QGPS):
+    def __init__(self, hilbert, epsilon=None, n_bond=None, automorphisms=None,
+                 spin_flip_sym=False, dtype=complex):
+        super().__init__(hilbert, epsilon=epsilon, n_bond=n_bond,
+                         automorphisms=automorphisms, spin_flip_sym=spin_flip_sym,
+                         cluster_ids=None, dtype=dtype)
+        self._workspace = None
+        self._site_product = _np.zeros(self._epsilon.shape[1], dtype=_np.complex128)
+
+    def log_val(self, x, out=None):
+        r"""Computes the logarithm of the wave function for a batch of visible
+        configurations `x` and stores the result into `out`.
+
+        Args:
+            x: A matrix of `float64` of shape `(*, self.n_visible)`.
+            out: Destination vector of `complex128`. The
+                 length of `out` should be `x.shape[0]`.
+
+        Returns:
+            A complex number when `x` is a vector and vector when `x` is a
+            matrix.
+        """
+        if self._workspace is None:
+            self._workspace = x[0,:].copy()
+
+        self._set_master_conf(x, self._workspace, self._Smap, self._sym_spin_flip_sign)
+        
+        if self._ref_conf is None or not self._fast_update:
+            if len(x.shape) > 1:
+                self._ref_conf = x[0,:].copy()
+            else:
+                self._ref_conf = x.copy()
+            if self._exp_kern_representation:
+                self._compute_site_prod_exp_form(self._ref_conf, self._site_product, self._epsilon)
+            else:
+                self._compute_site_prod_std_form(self._ref_conf, self._site_product, self._epsilon)
+        if self._exp_kern_representation:
+            val = self._log_val_kernel_exp_form(x, out, self._ref_conf, self._site_product, self._epsilon)
+        else:
+            val = self._log_val_kernel_std_form(x, out, self._ref_conf, self._site_product, self._epsilon)
+        return val
+
+    def der_log(self, x, out=None):
+        r"""Computes the gradient of the logarithm of the wavefunction for a
+        batch of visible configurations `x` and stores the result into `out`.
+
+        Args:
+            x: A matrix of `float64` of shape `(*, self.n_visible)`.
+            out: Destination tensor of `complex128`.
+                `out` should be a matrix of shape `(v.shape[0], self.n_par)`.
+
+        Returns:
+            `out`
+        """
+
+        if self._workspace is None:
+            self._workspace = x[0,:].copy()
+
+        self._set_master_conf(x, self._workspace, self._Smap, self._sym_spin_flip_sign)
+        
+        if self._ref_conf is None or not self._fast_update:
+            if len(x.shape) > 1:
+                self._ref_conf = x[0,:].copy()
+            else:
+                self._ref_conf = x.copy()
+            if self._exp_kern_representation:
+                self._compute_site_prod_exp_form(self._ref_conf, self._site_product, self._epsilon)
+            else:
+                self._compute_site_prod_std_form(self._ref_conf, self._site_product, self._epsilon)
+        if self._exp_kern_representation:
+            der = self._der_log_kernel_exp_form(x, out,  self._ref_conf, self._site_product, self._epsilon, self._npar, self._der_ids)
+        else:
+            der = self._der_log_kernel_std_form(x, out,  self._ref_conf, self._site_product, self._epsilon, self._npar, self._der_ids)
+        return der
+
+    @staticmethod
+    @jit(nopython=True)
+    def _set_master_conf(x, workspace, Smap, sym_spin_flip_sign):
+        limit = x.shape[1] - 1
+        for b in range(x.shape[0]):
+            t = 0
+            for i in range(workspace.shape[0]):
+                workspace[i] = sym_spin_flip_sign[t] * x[b, Smap[t,i]]
+            for t in range(1, Smap.shape[0]):
+                pos = 0
+                while sym_spin_flip_sign[t] * x[b, Smap[t,pos]] == workspace[pos] and pos < limit:
+                    pos += 1
+                if sym_spin_flip_sign[t] * x[b, Smap[t,pos]] > workspace[pos]:
+                    for i in range(workspace.shape[0]):
+                        workspace[i] = sym_spin_flip_sign[t] * x[b, Smap[t,i]]
+
+            for i in range(workspace.shape[0]):
+                x[b, i] = workspace[i]
+
+    @staticmethod
+    @jit(nopython=True)
+    def _compute_site_prod_std_form(ref_conf, site_product, epsilon):
+        for w in range(epsilon.shape[1]):
+            innerprod = _np.complex128(1.0)
+            for i in range(ref_conf.shape[0]):
+                if ref_conf[i] < 0:
+                    innerprod *= epsilon[i, w, 0]
+                else:
+                    innerprod *= epsilon[i, w, 1]
+            site_product[w] = innerprod
+    
+    @staticmethod
+    @jit(nopython=True)
+    def _compute_site_prod_exp_form(ref_conf, site_product, epsilon):
+        for w in range(epsilon.shape[1]):
+            innerprod = _np.complex128(0.0)
+            for i in range(ref_conf.shape[0]):
+                if ref_conf[i] < 0:
+                    innerprod += epsilon[i, w, 0]
+                else:
+                    innerprod += epsilon[i, w, 1]
+            site_product[w] = innerprod
+
+    @staticmethod
+    @jit(nopython=True)
+    def _log_val_kernel_exp_form(x, out, ref_conf, site_product, epsilon):
+        if out is None:
+            out = _np.empty(x.shape[0], dtype=_np.complex128)
+
+        for b in range(x.shape[0]):
+            out[b] = 0.0
+
+            # update site product
+            for pos in range(x.shape[1]):
+                if x[b, pos] != ref_conf[pos]:
+                    for w in range(epsilon.shape[1]):
+                        if x[b, pos] < 0:
+                            site_product[w] += (epsilon[pos, w, 0] - epsilon[pos, w, 1])
+                        else:
+                            site_product[w] += (epsilon[pos, w, 1] - epsilon[pos, w, 0])
+                ref_conf[pos] = x[b, pos]
+
+            out[b] = _np.complex128(0.0)
+            for w in range(epsilon.shape[1]):
+                out[b] += _np.exp(site_product[w])
+        return out
+
+    @staticmethod
+    @jit(nopython=True)
+    def _der_log_kernel_exp_form(x, out, ref_conf, site_product, epsilon, npar, der_ids):
+        batch_size = x.shape[0]
+
+        if out is None:
+            out = _np.empty((batch_size, npar), dtype=_np.complex128)
+
+        out.fill(0.0)
+
+        for b in range(batch_size):
+            # update site product
+            for pos in range(x.shape[1]):
+                if x[b, pos] != ref_conf[pos]:
+                    for w in range(epsilon.shape[1]):
+                        if x[b, pos] < 0:
+                            site_product[w] += (epsilon[pos, w, 0] - epsilon[pos, w, 1])
+                        else:
+                            site_product[w] += (epsilon[pos, w, 1] - epsilon[pos, w, 0])
+                ref_conf[pos] = x[b, pos]
+
+            for w in range(epsilon.shape[1]):
+                derivative = _np.exp(site_product[w])
+                for i in range(x.shape[1]):
+                    if x[b, i] < 0:
+                        if der_ids[i, w, 0] >= 0:
+                            out[b, der_ids[i, w, 0]] += derivative
+                    else:
+                        if der_ids[i, w, 1] >= 0:
+                            out[b, der_ids[i, w, 1]] += derivative
+        return out
+
+    @staticmethod
+    @jit(nopython=True)
+    def _log_val_kernel_std_form(x, out, ref_conf, site_product, epsilon):
+        eps = _np.finfo(_np.double).eps
+
+        if out is None:
+            out = _np.empty(x.shape[0], dtype=_np.complex128)
+
+        for b in range(x.shape[0]):
+            out[b] = 0.0
+
+            # update site product
+            for pos in range(x.shape[1]):
+                if x[b, pos] != ref_conf[pos]:
+                    i = pos
+                    for w in range(epsilon.shape[1]):
+                        if x[b, pos] < 0:
+                            if abs(epsilon[pos, w, 1]) > 1.e4 * eps:
+                                site_product[w] *= (epsilon[pos, w, 0]/epsilon[pos, w, 1])
+                            else:
+                                recompute = True
+                        else:
+                            if abs(epsilon[pos, w, 0]) > 1.e4 * eps:
+                                site_product[w] *= (epsilon[pos, w, 1]/epsilon[pos, w, 0])
+                            else:
+                                recompute = True
+                        if recompute:
+                            break
+                ref_conf[pos] = x[b, pos]
+            if recompute:
+                for w in range(epsilon.shape[1]):
+                    site_product[w] = _np.complex128(1.0)
+                    for i in range(ref_conf.shape[0]):
+                        if ref_conf[i] < 0:
+                            site_product[w] *= epsilon[i, w, 0]
+                        else:
+                            site_product[w] *= epsilon[i, w, 1]
+
+            out[b] = _np.complex128(0.0)
+            for w in range(epsilon.shape[1]):
+                out[b] += site_product[w]
+        return out
+
+    @staticmethod
+    @jit(nopython=True)
+    def _der_log_kernel_std_form(x, out, ref_conf, site_product, epsilon, npar, der_ids):
+        batch_size = x.shape[0]
+        eps = _np.finfo(_np.double).eps
+
+        if out is None:
+            out = _np.empty((batch_size, npar), dtype=_np.complex128)
+
+        out.fill(0.0)
+
+        for b in range(x.shape[0]):
+            out[b] = 0.0
+
+            # update site product
+            for pos in range(x.shape[1]):
+                if x[b, pos] != ref_conf[pos]:
+                    for w in range(epsilon.shape[1]):
+                        if x[b, pos] < 0:
+                            if abs(epsilon[pos, w, 1]) > 1.e4 * eps:
+                                site_product[w] *= (epsilon[pos, w, 0]/epsilon[pos, w, 1])
+                            else:
+                                recompute = True
+                        else:
+                            if abs(epsilon[pos, w, 0]) > 1.e4 * eps:
+                                site_product[w] *= (epsilon[pos, w, 1]/epsilon[pos, w, 0])
+                            else:
+                                recompute = True
+                        if recompute:
+                            break
+                ref_conf[pos] = x[b, pos]
+            if recompute:
+                for w in range(epsilon.shape[1]):
+                    site_product[w] = _np.complex128(1.0)
+                    for i in range(ref_conf.shape[0]):
+                        if ref_conf[i] < 0:
+                            site_product[w] *= epsilon[i, w, 0]
+                        else:
+                            site_product[w] *= epsilon[i, w, 1]
+
+            for w in range(epsilon.shape[1]):
+                derivative = site_product[w]
+                for i in range(x.shape[1]):
+                    if x[b, i] < 0:
+                        if der_ids[i, w, 0] >= 0:
+                            if _np.abs(epsilon[i, w, 0]) > 1.e6*eps:
+                                out[b, der_ids[i, w, 0]] += derivative/epsilon[i, w, 0]
+                            else:
+                                der = _np.complex128(1.0)
+                                for j in range(x.shape[1]):
+                                    if j != i:
+                                        if x[b, j] < 0:
+                                            der *= epsilon[j, w, 0]
+                                        else:
+                                            der *= epsilon[j, w, 1]
+                                out[b, der_ids[i, w, 0]] += der
+                    else:
+                        if der_ids[i, w, 1] >= 0:
+                            if _np.abs(epsilon[i, w, 1]) > 1.e6*eps:
+                                out[b, der_ids[i, w, 1]] += derivative/epsilon[i, w, 1]
+                            else:
+                                der = _np.complex128(1.0)
+                                for j in range(x.shape[1]):
+                                    if j != i:
+                                        if x[b, j] < 0:
+                                            der *= epsilon[j, w, 0]
+                                        else:
+                                            der *= epsilon[j, w, 1]
+                                out[b, der_ids[i, w, 1]] += der
+        return out
+
+
+
 class QGPSProdSym(QGPS):
     def __init__(self, hilbert, epsilon=None, n_bond=None, automorphisms=None,
                  spin_flip_sym=False, cluster_ids=None, dtype=complex):
