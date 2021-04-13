@@ -27,6 +27,7 @@ ha = nk.custom.J1J2(g, J2=J2, msr=False)
 transl = symmetries.get_symms_square_lattice(L)
 
 ma = nk.machine.QGPSSumSym(ha.hilbert, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
+ma._exp_kern_representation = False
 ma.init_random_parameters(sigma=0.02, start_from_uniform=False)
 
 # Optimizer
@@ -49,10 +50,12 @@ max_id = min(max_opt, arr.size)
 samples = 10000
 
 # Create the optimization driver
-gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50)
+gs = nk.custom.SweepOptStabSR(hamiltonian=ha, sampler=sa, n_samples=samples, sr=sr, n_discard=50)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
+        fl.write("")
+    with open("sr_par.txt", "w") as fl:
         fl.write("")
 
 np.save("epsilon.npy", ma._epsilon)
@@ -64,6 +67,8 @@ for it in gs.iter(3950,1):
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
+        with open("sr_par.txt", "a") as fl:
+            fl.write("{}  {}\n".format(gs._diag_shift, gs._time_step))
 
 epsilon_avg = np.zeros(ma._epsilon.shape, dtype=ma._epsilon.dtype)
 
@@ -75,6 +80,8 @@ for it in gs.iter(50,1):
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
+        with open("sr_par.txt", "a") as fl:
+            fl.write("{}  {}\n".format(gs._diag_shift, gs._time_step))
 
 epsilon_avg /= 50
 
