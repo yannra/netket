@@ -101,6 +101,12 @@ class SRStab(Vmc):
             except:
                 valid_result = False
 
+            if not valid_result:
+                _MPI_comm.bcast(valid_result, root=_rank)
+            
+            _MPI_comm.barrier()
+
+
             if valid_result:
                 best_e = stats.mean.real
                 best_shift = test_shift
@@ -131,6 +137,11 @@ class SRStab(Vmc):
                 valid_result = False
 
             self.machine.parameters += dp
+
+            if not valid_result:
+                _MPI_comm.bcast(valid_result, root=_rank)
+            
+            _MPI_comm.barrier()
 
             if valid_result:
                 if e_new < best_e:
