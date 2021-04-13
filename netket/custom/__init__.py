@@ -3,4 +3,4 @@ from .symmetries import get_symms_chain, get_symms_square_lattice
 from ._der_local_values import local_values_with_der
 from .linear_method import LinMethod
 from .stabilised_sr import SRStab
-from .sweep_opt import SweepOpt, SweepOptLinMethod
+from .sweep_opt import SweepOpt, SweepOptLinMethod, SweepOptStabSR
