@@ -34,7 +34,7 @@ sr = nk.optimizer.SR(ma)
 
 samples = 7500
 
-gs = nk.custom.SweepOptStabSR(hamiltonian=ha, sampler=sa, sr=sr, n_samples=samples, n_discard=50, sweep_by_bonds=True)
+gs = nk.custom.SweepOptStabSR(hamiltonian=ha, sampler=sa, n_samples=samples, sr=sr, n_discard=50, sweep_by_bonds=True)
 
 
 if mpi.COMM_WORLD.Get_rank() == 0:
