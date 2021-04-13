@@ -40,6 +40,8 @@ gs = nk.custom.SweepOptStabSR(hamiltonian=ha, sampler=sa, sr=sr, n_samples=sampl
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
         fl.write("")
+    with open("sr_par.txt", "w") as fl:
+        fl.write("")
 
 samp = max(2450, ma._epsilon.size//2)
 
@@ -49,6 +51,8 @@ for it in gs.iter(samp,1):
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
+        with open("sr_par.txt", "a") as fl:
+            fl.write("{}  {}\n".format(gs._diag_shift, gs._time_step))
 
 epsilon_avg = np.zeros(ma._epsilon.shape, dtype=ma._epsilon.dtype)
 
@@ -59,6 +63,8 @@ for it in gs.iter(50,1):
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
+        with open("sr_par.txt", "a") as fl:
+            fl.write("{}  {}\n".format(gs._diag_shift, gs._time_step))
 
 epsilon_avg /= 50
 
