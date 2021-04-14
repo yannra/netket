@@ -119,11 +119,13 @@ class SRStab(Vmc):
             assert(count < 100)
         
         # randomly sample new parameters from [central/5, 5 * central] (log-uniformly distributed)
-        test_params = []
-        for i in range(4):
-            shift = np.exp(np.random.rand() * (np.log(best_shift*self._search_radius) - np.log(best_shift/self._search_radius)) + np.log(best_shift/self._search_radius))
-            step = np.exp(np.random.rand() * (np.log(best_step*self._search_radius) - np.log(best_step/self._search_radius)) + np.log(best_step/self._search_radius))
-            test_params.append((shift, step))
+        test_shifts = np.exp(np.random.rand(4) * (np.log(best_shift*self._search_radius) - np.log(best_shift/self._search_radius)) + np.log(best_shift/self._search_radius))
+        test_steps = np.exp(np.random.rand(4) * (np.log(best_step*self._search_radius) - np.log(best_step/self._search_radius)) + np.log(best_step/self._search_radius))
+
+        test_params = np.vstack((test_shifts, test_steps)).T
+
+        _MPI_comm.Bcast(test_params, root=0)
+        _MPI_comm.barrier()
 
         for parameters in test_params:
             self._sr._diag_shift = parameters[0]
