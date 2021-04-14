@@ -218,7 +218,7 @@ class SR:
             out.imag.fill(0.0)
 
         if _n_nodes > 1:
-            self._comm.Bcast(out, root=0)
+            self._comm.bcast(out, root=0)
             self._comm.barrier()
 
         return out
