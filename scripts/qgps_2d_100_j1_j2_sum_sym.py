@@ -27,7 +27,6 @@ ha = nk.custom.J1J2(g, J2=J2, msr=False)
 transl = symmetries.get_symms_square_lattice(L)
 
 ma = nk.machine.QGPSSumSym(ha.hilbert, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-ma._exp_kern_representation = False
 ma.init_random_parameters(sigma=0.02, start_from_uniform=False)
 
 # Optimizer
@@ -69,6 +68,10 @@ for it in gs.iter(3950,1):
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
         with open("sr_par.txt", "a") as fl:
             fl.write("{}  {}\n".format(gs._diag_shift, gs._time_step))
+    if gs._diag_shift > 1:
+        gs._diag_shift = 0.01
+    if gs._time_step < 0.001:
+        gs._time_step = 0.02
 
 epsilon_avg = np.zeros(ma._epsilon.shape, dtype=ma._epsilon.dtype)
 
@@ -82,6 +85,10 @@ for it in gs.iter(50,1):
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
         with open("sr_par.txt", "a") as fl:
             fl.write("{}  {}\n".format(gs._diag_shift, gs._time_step))
+    if gs._diag_shift > 1:
+        gs._diag_shift = 0.01
+    if gs._time_step < 0.001:
+        gs._time_step = 0.02
 
 epsilon_avg /= 50
 
