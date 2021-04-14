@@ -128,17 +128,20 @@ class SRStab(Vmc):
         _MPI_comm.barrier()
 
         for parameters in test_params:
-            self._sr._diag_shift = parameters[0]
-            dp = parameters[1] * self._sr.compute_update(self._jac, self._grads, self._dp)
-            self.machine.parameters -= dp
             try:
-                amplitudes = self.machine.log_val(samples_r)
-                e_new = self.correlated_en_estimation(samples_r, ref_amplitudes, amplitudes).real
-                valid_result = True
+                self._sr._diag_shift = parameters[0]
+                dp = parameters[1] * self._sr.compute_update(self._jac, self._grads, self._dp)
+                self.machine.parameters -= dp
+                try:
+                    amplitudes = self.machine.log_val(samples_r)
+                    e_new = self.correlated_en_estimation(samples_r, ref_amplitudes, amplitudes).real
+                    valid_result = True
+                except:
+                    valid_result = False
+
+                self.machine.parameters += dp
             except:
                 valid_result = False
-
-            self.machine.parameters += dp
 
             if not valid_result:
                 _MPI_comm.bcast(valid_result, root=_rank)
