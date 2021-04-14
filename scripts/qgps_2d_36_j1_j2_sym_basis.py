@@ -53,6 +53,10 @@ for it in gs.iter(samp,1):
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
         with open("sr_par.txt", "a") as fl:
             fl.write("{}  {}\n".format(gs._diag_shift, gs._time_step))
+    if gs._diag_shift > 1:
+        gs._diag_shift = 0.01
+    if gs._time_step < 0.001:
+        gs._time_step = 0.02
 
 epsilon_avg = np.zeros(ma._epsilon.shape, dtype=ma._epsilon.dtype)
 
@@ -65,6 +69,10 @@ for it in gs.iter(50,1):
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
         with open("sr_par.txt", "a") as fl:
             fl.write("{}  {}\n".format(gs._diag_shift, gs._time_step))
+    if gs._diag_shift > 1:
+        gs._diag_shift = 0.01
+    if gs._time_step < 0.001:
+        gs._time_step = 0.02
 
 epsilon_avg /= 50
 
