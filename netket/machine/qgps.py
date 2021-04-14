@@ -117,8 +117,6 @@ class QGPS(AbstractMachine):
                     epsilon += 1j*rgen.normal(scale=sigma, size=epsilon.shape)
                 if start_from_uniform:
                     epsilon[0,:,:] = 0.0
-                else:
-                    epsilon[0,:,:] -= 1.0
 
         if _n_nodes > 1:
             _MPI_comm.Bcast(epsilon, root=0)
