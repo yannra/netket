@@ -27,6 +27,7 @@ ha = nk.custom.J1J2(g, J2=J2, msr=False)
 transl = symmetries.get_symms_square_lattice(L)
 
 ma = nk.machine.QGPSSumSym(ha.hilbert, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
+ma._exp_kern_representation = False
 ma.init_random_parameters(sigma=0.02, start_from_uniform=False)
 
 # Optimizer
