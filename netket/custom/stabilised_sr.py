@@ -116,9 +116,6 @@ class SRStab(Vmc):
                 test_shift *= 1.5
                 test_step /= 1.5
             count += 1
-            print(count, flush=True)
-            if count > 3:
-                print(stats.mean.real, self._loss_stats.mean.real + 2*self._loss_stats.error_of_mean, flush=True)
             assert(count < 100)
         
         # randomly sample new parameters from [central/5, 5 * central] (log-uniformly distributed)
