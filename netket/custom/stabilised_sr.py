@@ -60,15 +60,16 @@ class SRStab(Vmc):
 
     def correlated_en_estimation(self, samples, ref_amplitudes, amplitudes):
         ratios = np.exp(2 * (amplitudes-ref_amplitudes).real)
-        assert(np.sum(np.isfinite(ratios)) == ratios.size)
         loc_vals = _local_values(self._ham, self.machine, samples)
-        assert(np.sum(np.isfinite(loc_vals)) == loc_vals.size)
-        return (_mean(loc_vals * ratios)/_mean(ratios))
+        val = (_mean(loc_vals * ratios)/_mean(ratios))
+        assert(np.isfinite(val))
+        return val
 
     def en_estimation(self, samples_r, samples):
         loc = _local_values(self._ham, self.machine, samples_r).reshape(samples.shape[0:2])
-        assert(np.sum(np.isfinite(loc)) == loc.size)
-        return _statistics(loc)
+        stat = _statistics(loc)
+        assert(np.isfinite(stat.mean))
+        return stat
 
     def _linesearch(self):
         samples = None
@@ -101,12 +102,6 @@ class SRStab(Vmc):
             except:
                 valid_result = False
 
-            if not valid_result:
-                _MPI_comm.bcast(valid_result, root=_rank)
-            
-            _MPI_comm.barrier()
-
-
             if valid_result:
                 best_e = stats.mean.real
                 best_shift = test_shift
@@ -118,11 +113,13 @@ class SRStab(Vmc):
             count += 1
             assert(count < 100)
         
-        # randomly sample new parameters from [central/5, 5 * central] (log-uniformly distributed)
-        test_shifts = np.exp(np.random.rand(4) * (np.log(best_shift*self._search_radius) - np.log(best_shift/self._search_radius)) + np.log(best_shift/self._search_radius))
-        test_steps = np.exp(np.random.rand(4) * (np.log(best_step*self._search_radius) - np.log(best_step/self._search_radius)) + np.log(best_step/self._search_radius))
-
-        test_params = np.vstack((test_shifts, test_steps)).T
+        test_params = np.zeros((4,2))
+        
+        if _rank == 0:
+            # randomly sample new parameters from [central/5, 5 * central] (log-uniformly distributed)
+            test_shifts = np.exp(np.random.rand(4) * (np.log(best_shift*self._search_radius) - np.log(best_shift/self._search_radius)) + np.log(best_shift/self._search_radius))
+            test_steps = np.exp(np.random.rand(4) * (np.log(best_step*self._search_radius) - np.log(best_step/self._search_radius)) + np.log(best_step/self._search_radius))
+            test_params[:,:] = np.array([[test_shifts[i], test_steps[i]] for i in range(4)])
 
         _MPI_comm.Bcast(test_params, root=0)
         _MPI_comm.barrier()
@@ -142,11 +139,6 @@ class SRStab(Vmc):
                 self.machine.parameters += dp
             except:
                 valid_result = False
-
-            if not valid_result:
-                _MPI_comm.bcast(valid_result, root=_rank)
-            
-            _MPI_comm.barrier()
 
             if valid_result:
                 if e_new < best_e:
