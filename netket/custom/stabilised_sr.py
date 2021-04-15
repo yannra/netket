@@ -43,7 +43,7 @@ class SRStab(Vmc):
         corr_samp = None,
         n_discard=None,
         search_radius=3,
-        par_samples=10
+        par_samples=4
     ):
         assert(not sr.onthefly)
         optimizer = op.Sgd(sampler.machine, learning_rate=1.0)
