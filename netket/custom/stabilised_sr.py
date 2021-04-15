@@ -42,7 +42,8 @@ class SRStab(Vmc):
         time_step = 0.02,
         corr_samp = None,
         n_discard=None,
-        search_radius=3
+        search_radius=3,
+        par_samples=10
     ):
         assert(not sr.onthefly)
         optimizer = op.Sgd(sampler.machine, learning_rate=1.0)
@@ -57,6 +58,7 @@ class SRStab(Vmc):
         self._n_corr_samples_node = int(math.ceil(n_corr_samples_chain / self.n_nodes))
         self._n_corr_samples = int(self._n_corr_samples_node * self._batch_size * self.n_nodes)
         self._search_radius = search_radius
+        self._par_samples = par_samples
 
     def correlated_en_estimation(self, samples, ref_amplitudes, amplitudes):
         ratios = np.exp(2 * (amplitudes-ref_amplitudes).real)
@@ -113,13 +115,13 @@ class SRStab(Vmc):
             count += 1
             assert(count < 100)
         
-        test_params = np.zeros((4,2))
+        test_params = np.zeros((self._par_samples,2))
         
         if _rank == 0:
             # randomly sample new parameters from [central/5, 5 * central] (log-uniformly distributed)
-            test_shifts = np.exp(np.random.rand(4) * (np.log(best_shift*self._search_radius) - np.log(best_shift/self._search_radius)) + np.log(best_shift/self._search_radius))
-            test_steps = np.exp(np.random.rand(4) * (np.log(best_step*self._search_radius) - np.log(best_step/self._search_radius)) + np.log(best_step/self._search_radius))
-            test_params[:,:] = np.array([[test_shifts[i], test_steps[i]] for i in range(4)])
+            test_shifts = np.exp(np.random.rand(self._par_samples) * (np.log(best_shift*self._search_radius) - np.log(best_shift/self._search_radius)) + np.log(best_shift/self._search_radius))
+            test_steps = np.exp(np.random.rand(self._par_samples) * (np.log(best_step*self._search_radius) - np.log(best_step/self._search_radius)) + np.log(best_step/self._search_radius))
+            test_params[:,:] = np.array([[test_shifts[i], test_steps[i]] for i in range(self._par_samples)])
 
         _MPI_comm.Bcast(test_params, root=0)
         _MPI_comm.barrier()
