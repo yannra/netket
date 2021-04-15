@@ -122,7 +122,9 @@ class LinMethod(Vmc):
 
     def correlated_en_estimation(self, samples, ref_amplitudes, amplitudes):
         ratios = np.exp(2 * (amplitudes-ref_amplitudes).real)
-        return (_mean(_local_values(self._ham, self.machine, samples) * ratios)/_mean(ratios))
+        val = (_mean(_local_values(self._ham, self.machine, samples) * ratios)/_mean(ratios))
+        assert(np.isfinite(val))
+        return val
 
     def recalculate_shift(self, H_full, S_full, oks_mean):
         samples = None
@@ -152,11 +154,6 @@ class LinMethod(Vmc):
             except:
                 valid_result = False
 
-            if not valid_result:
-                _MPI_comm.bcast(valid_result, root=_rank)
-            
-            _MPI_comm.barrier()
-
             if valid_result:
                 energies.append(e_new)
                 shifts.append(test_shift)
@@ -178,11 +175,6 @@ class LinMethod(Vmc):
                 valid_result = True
             except:
                 valid_result = False
-
-            if not valid_result:
-                _MPI_comm.bcast(valid_result, root=_rank)
-            
-            _MPI_comm.barrier()
 
             self.machine.parameters -= dp
 
@@ -218,11 +210,6 @@ class LinMethod(Vmc):
                     valid_result = True
                 except:
                     valid_result = False
-
-                if not valid_result:
-                    _MPI_comm.bcast(valid_result, root=_rank)
-            
-                _MPI_comm.barrier()
 
                 self.machine.parameters -= dp
 
