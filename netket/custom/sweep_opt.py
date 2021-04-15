@@ -119,11 +119,12 @@ class SweepOptStabSR(SRStab):
         corr_samp = None,
         n_discard=None,
         search_radius=3,
+        par_samples=4,
         max_opt = 3000,
         sweep_by_bonds = True,
     ):
         super().__init__(hamiltonian, sampler, n_samples, sr, diag_shift=diag_shift, time_step=time_step,
-                         corr_samp=corr_samp, n_discard=n_discard, search_radius=search_radius)
+                         corr_samp=corr_samp, n_discard=n_discard, search_radius=search_radius, par_samples=par_samples)
         self.max_opt = max_opt
 
         self.opt_arr = np.zeros(self._sampler._machine._epsilon.size, dtype=bool)
