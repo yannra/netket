@@ -168,7 +168,6 @@ class SweepOptStabLinMethod(LinMethodStab):
         hamiltonian,
         sampler,
         n_samples,
-        sr,
         diag_shift = 0.01,
         time_step = 1.0,
         corr_samp = None,
@@ -178,7 +177,7 @@ class SweepOptStabLinMethod(LinMethodStab):
         max_opt = 3000,
         sweep_by_bonds = True,
     ):
-        super().__init__(hamiltonian, sampler, n_samples, sr, diag_shift=diag_shift, time_step=time_step,
+        super().__init__(hamiltonian, sampler, n_samples, diag_shift=diag_shift, time_step=time_step,
                          corr_samp=corr_samp, n_discard=n_discard, search_radius=search_radius, par_samples=par_samples)
         self.max_opt = max_opt
 
