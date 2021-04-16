@@ -50,7 +50,7 @@ max_id = min(max_opt, arr.size)
 samples = 10000
 
 # Create the optimization driver
-gs = nk.custom.SweepOptStabSR(hamiltonian=ha, sampler=sa, n_samples=samples, sr=sr, n_discard=50)
+gs = nk.custom.SweepOptStabSR(hamiltonian=ha, sampler=sa, n_samples=samples, sr=sr, n_discard=50, search_radius=2)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
