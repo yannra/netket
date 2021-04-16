@@ -133,7 +133,8 @@ class SRStab(Vmc):
                 self.machine.parameters -= dp
                 try:
                     amplitudes = self.machine.log_val(samples_r)
-                    e_new = self.correlated_en_estimation(samples_r, ref_amplitudes, amplitudes).real
+                    stats = self.correlated_en_estimation(samples_r, ref_amplitudes, amplitudes)
+                    e_new = stats.real
                     valid_result = True
                 except:
                     valid_result = False
@@ -143,7 +144,7 @@ class SRStab(Vmc):
                 valid_result = False
 
             if valid_result:
-                if e_new < best_e:
+                if e_new < best_e and abs(stats.imag) < 1:
                     best_e = e_new
                     best_shift = parameters[0]
                     best_step = parameters[1]
