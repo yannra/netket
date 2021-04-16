@@ -170,11 +170,11 @@ class SweepOptStabLinMethod(LinMethodStab):
         n_samples,
         sr,
         diag_shift = 0.01,
-        time_step = 0.02,
+        time_step = 1.0,
         corr_samp = None,
         n_discard=None,
         search_radius=3,
-        par_samples=4,
+        par_samples=10,
         max_opt = 3000,
         sweep_by_bonds = True,
     ):
