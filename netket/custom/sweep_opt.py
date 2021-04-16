@@ -42,6 +42,8 @@ class SweepOpt(nk.Vmc):
                 if self.sr is not None and self.max_opt < self.opt_arr.size:
                     self.sr._x0 = None
                 dp = self._forward_and_backward()
+                if i == 0:
+                    yield self.step_count
                 self.update_parameters(dp)
                 self.opt_arr.fill(False)
                 self.opt_arr[self.max_id:(self.max_id+self.max_opt)] = True
@@ -50,8 +52,6 @@ class SweepOpt(nk.Vmc):
                     self.max_id = min((self.max_id + self.max_opt - self.opt_arr.size), self.opt_arr.size)
                 else:
                     self.max_id = min((self.max_id + self.max_opt), self.opt_arr.size)
-                if i == 0:
-                    yield self.step_count
 
 
 class SweepOptLinMethod(LinMethod):
@@ -96,6 +96,8 @@ class SweepOptLinMethod(LinMethod):
 
                 self._sampler._machine.change_opt_ids(opt_tensor)
                 dp = self._forward_and_backward()
+                if i == 0:
+                    yield self.step_count
                 self.update_parameters(dp)
                 self.opt_arr.fill(False)
                 self.opt_arr[self.max_id:(self.max_id+self.max_opt)] = True
@@ -104,8 +106,6 @@ class SweepOptLinMethod(LinMethod):
                     self.max_id = min((self.max_id + self.max_opt - self.opt_arr.size), self.opt_arr.size)
                 else:
                     self.max_id = min((self.max_id + self.max_opt), self.opt_arr.size)
-                if i == 0:
-                    yield self.step_count
 
 
 class SweepOptStabSR(SRStab):
@@ -151,6 +151,8 @@ class SweepOptStabSR(SRStab):
                 if self.sr is not None and self.max_opt < self.opt_arr.size:
                     self.sr._x0 = None
                 dp = self._forward_and_backward()
+                if i == 0:
+                    yield self.step_count
                 self.update_parameters(dp)
                 self.opt_arr.fill(False)
                 self.opt_arr[self.max_id:(self.max_id+self.max_opt)] = True
@@ -159,8 +161,6 @@ class SweepOptStabSR(SRStab):
                     self.max_id = min((self.max_id + self.max_opt - self.opt_arr.size), self.opt_arr.size)
                 else:
                     self.max_id = min((self.max_id + self.max_opt), self.opt_arr.size)
-                if i == 0:
-                    yield self.step_count
 
 class SweepOptStabLinMethod(LinMethodStab):
     def __init__(
@@ -205,6 +205,8 @@ class SweepOptStabLinMethod(LinMethodStab):
                 if self.sr is not None and self.max_opt < self.opt_arr.size:
                     self.sr._x0 = None
                 dp = self._forward_and_backward()
+                if i == 0:
+                    yield self.step_count
                 self.update_parameters(dp)
                 self.opt_arr.fill(False)
                 self.opt_arr[self.max_id:(self.max_id+self.max_opt)] = True
@@ -213,5 +215,3 @@ class SweepOptStabLinMethod(LinMethodStab):
                     self.max_id = min((self.max_id + self.max_opt - self.opt_arr.size), self.opt_arr.size)
                 else:
                     self.max_id = min((self.max_id + self.max_opt), self.opt_arr.size)
-                if i == 0:
-                    yield self.step_count
