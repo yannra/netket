@@ -113,6 +113,8 @@ class SRStab(Vmc):
                 test_shift *= 1.5
                 test_step /= 1.5
             count += 1
+            if count > 3:
+                print(count, self._loss_stats.mean.real, test_shift, test_step, flush=True)
             assert(count < 100)
         
         test_params = np.zeros((self._par_samples,2))
