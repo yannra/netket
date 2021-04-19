@@ -71,7 +71,7 @@ for it in gs.iter(3950,1):
             fl.write("{}  {}\n".format(gs._diag_shift, gs._time_step))
     if gs._diag_shift > 1:
         gs._diag_shift = 0.01
-    if gs._time_step < 0.001 or gs._time_step > 0.2:
+    if gs._time_step < 0.001 or gs._time_step > 0.1:
         gs._time_step = 0.02
 
 epsilon_avg = np.zeros(ma._epsilon.shape, dtype=ma._epsilon.dtype)
