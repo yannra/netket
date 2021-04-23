@@ -74,7 +74,7 @@ class QGPS(AbstractMachine):
         self._opt_params = self._epsilon[self._der_ids >= 0].copy()
         self._npar = self._opt_params.size
 
-        self._exp_kern_representation = True
+        self._exp_kern_representation = False
 
         self._site_product = _np.zeros((self._epsilon.shape[1], self._Smap.shape[0]), dtype=_np.complex128)
         self._ref_conf = None
