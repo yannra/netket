@@ -10,6 +10,12 @@ from netket.stats import (
     sum_inplace as _sum_inplace,
 )
 
+from netket.utils import (
+    MPI_comm as _MPI_comm,
+    n_nodes as _n_nodes,
+    node_number as _rank
+)
+
 from netket.vmc_common import info, tree_map
 
 
@@ -24,6 +30,7 @@ class SweepOpt(nk.Vmc):
         sr=None,
         max_opt = 3000,
         sweep_by_bonds = True,
+        check_improvement = True
     ):
         super().__init__(hamiltonian, sampler, optimizer, n_samples, n_discard=n_discard, sr=sr)
         self.max_opt = max_opt
@@ -37,9 +44,12 @@ class SweepOpt(nk.Vmc):
         self._default_timestep = self.optimizer._learning_rate
         if self._sr is not None:
             self._default_shift = self._sr._diag_shift
+        self._check_improvement = check_improvement
+        self._previous_mean = None
+        self._previous_variance = None
 
     def iter(self, n_steps, step=1):
-        for _ in range(0, n_steps, step):
+        for count in range(0, n_steps, step):
             for i in range(0, step):
                 if self.sweep_by_bonds:
                     opt_tensor = np.zeros(self._sampler._machine._epsilon.shape, dtype=bool)
@@ -57,30 +67,43 @@ class SweepOpt(nk.Vmc):
                     self.sr._x0 = None
                 try:
                     dp = self._forward_and_backward()
-                    self._valid_par = self._sampler._machine._epsilon.copy()
+                    if self._valid_par is None:
+                        self._valid_par = self._sampler._machine._epsilon.copy()
+                    else:
+                        np.copyto(self._valid_par, self._sampler._machine._epsilon)
+                    self._previous_mean = self._loss_stats.mean.real
+                    self._previous_variance = self._loss_stats.variance
                     if self._sr is not None:
                         self._sr._diag_shift = self._default_shift
                     self.optimizer._learning_rate = self._default_timestep
+
+                    self.opt_arr.fill(False)
+                    self.opt_arr[self.max_id:(self.max_id+self.max_opt)] = True
+                    if self.max_id + self.max_opt > self.opt_arr.size:
+                        self.opt_arr[:(self.max_id + self.max_opt - self.opt_arr.size)] = True
+                        self.max_id = min((self.max_id + self.max_opt - self.opt_arr.size), self.opt_arr.size)
+                    else:
+                        self.max_id = min((self.max_id + self.max_opt), self.opt_arr.size)
                 except:
                     assert(self._valid_par is not None)
-                    self._sampler._machine._epsilon = self._valid_par
-                    self._sampler._machine._opt_params = self._sampler._machine._epsilon[self._sampler._machine._der_ids >= 0].copy()
+                    np.copyto(self._sampler._machine._epsilon, self._valid_par)
+                    np.copyto(self._sampler._machine._opt_params, self._sampler._machine._epsilon[self._sampler._machine._der_ids >= 0])
                     self.optimizer._learning_rate /= 2
                     if self._sr is not None:
                         self._sr._diag_shift *= 2
+                    if _rank == 0:
+                        print(count, "reset applied, learning rate:", self.optimizer._learning_rate, flush = True)
+                        if self._sr is not None:
+                            print("diag shift:", self._sr._diag_shift, flush=True)
+                    check_improvement = self._check_improvement
+                    self._check_improvement = False
                     dp = self._forward_and_backward()
-                    print(i, "reset applied", flush = True)
+                    self._check_improvement = check_improvement
 
                 if i == 0:
                     yield self.step_count
                 self.update_parameters(dp)
-                self.opt_arr.fill(False)
-                self.opt_arr[self.max_id:(self.max_id+self.max_opt)] = True
-                if self.max_id + self.max_opt > self.opt_arr.size:
-                    self.opt_arr[:(self.max_id + self.max_opt - self.opt_arr.size)] = True
-                    self.max_id = min((self.max_id + self.max_opt - self.opt_arr.size), self.opt_arr.size)
-                else:
-                    self.max_id = min((self.max_id + self.max_opt), self.opt_arr.size)
+
 
     def _forward_and_backward(self):
         """
@@ -104,6 +127,10 @@ class SweepOpt(nk.Vmc):
         eloc, self._loss_stats = self._get_mc_stats(self._ham)
 
         assert(self._loss_stats.mean.imag < 1.0)
+
+        if self._check_improvement and self._previous_mean is not None:
+            assert((self._loss_stats.mean.real - np.sqrt(self._loss_stats.variance)) < (self._previous_mean + np.sqrt(self._previous_variance)))
+
 
 
         # Center the local energy
