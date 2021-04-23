@@ -4,6 +4,15 @@ from .linear_method import LinMethod
 from .stabilised_sr import SRStab
 from .stabilised_lin_method import LinMethodStab
 
+from netket.stats import (
+    statistics as _statistics,
+    mean as _mean,
+    sum_inplace as _sum_inplace,
+)
+
+from netket.vmc_common import info, tree_map
+
+
 class SweepOpt(nk.Vmc):
     def __init__(
         self,
@@ -23,6 +32,11 @@ class SweepOpt(nk.Vmc):
         self.opt_arr[:self.max_opt] = True
         self.max_id = min(self.max_opt, self.opt_arr.size)
         self.sweep_by_bonds = sweep_by_bonds
+        self._valid_par = None
+        assert(isinstance(self.optimizer, nk.optimizer.numpy.Sgd))
+        self._default_timestep = self.optimizer._learning_rate
+        if self._sr is not None:
+            self._default_shift = self._sr._diag_shift
 
     def iter(self, n_steps, step=1):
         for _ in range(0, n_steps, step):
@@ -41,7 +55,22 @@ class SweepOpt(nk.Vmc):
                 self._sampler._machine.change_opt_ids(opt_tensor)
                 if self.sr is not None and self.max_opt < self.opt_arr.size:
                     self.sr._x0 = None
-                dp = self._forward_and_backward()
+                try:
+                    dp = self._forward_and_backward()
+                    self._valid_par = self._sampler._machine._epsilon.copy()
+                    if self._sr is not None:
+                        self._sr._diag_shift = self._default_shift
+                    self.optimizer._learning_rate = self._default_timestep
+                except:
+                    assert(self._valid_par is not None)
+                    self._sampler._machine._epsilon = self._valid_par
+                    self._sampler._machine._opt_params = self._sampler._machine._epsilon[self._sampler._machine._der_ids >= 0].copy()
+                    self.optimizer._learning_rate /= 2
+                    if self._sr is not None:
+                        self._sr._diag_shift *= 2
+                    dp = self._forward_and_backward()
+                    print(i, "reset applied", flush = True)
+
                 if i == 0:
                     yield self.step_count
                 self.update_parameters(dp)
@@ -52,6 +81,80 @@ class SweepOpt(nk.Vmc):
                     self.max_id = min((self.max_id + self.max_opt - self.opt_arr.size), self.opt_arr.size)
                 else:
                     self.max_id = min((self.max_id + self.max_opt), self.opt_arr.size)
+
+    def _forward_and_backward(self):
+        """
+        Performs a number of VMC optimization steps.
+
+        Args:
+            n_steps (int): Number of steps to perform.
+        """
+
+        self._sampler.reset()
+
+        # Burnout phase
+        self._sampler.generate_samples(self._n_discard)
+
+        # Generate samples and store them
+        self._samples = self._sampler.generate_samples(
+            self._n_samples_node, samples=self._samples
+        )
+
+        # Compute the local energy estimator and average Energy
+        eloc, self._loss_stats = self._get_mc_stats(self._ham)
+
+        assert(self._loss_stats.mean.imag < 1.0)
+
+
+        # Center the local energy
+        eloc -= _mean(eloc)
+
+        samples_r = self._samples.reshape((-1, self._samples.shape[-1]))
+        eloc_r = eloc.reshape(-1, 1)
+
+        # Perform update
+        if self._sr:
+            if self._sr.onthefly:
+
+                self._grads = self._machine.vector_jacobian_prod(
+                    samples_r, eloc_r / self._n_samples, self._grads
+                )
+
+                self._grads = tree_map(_sum_inplace, self._grads)
+
+                self._dp = self._sr.compute_update_onthefly(
+                    samples_r, self._grads, self._dp
+                )
+
+            else:
+                # When using the SR (Natural gradient) we need to have the full jacobian
+                self._grads, self._jac = self._machine.vector_jacobian_prod(
+                    samples_r,
+                    eloc_r / self._n_samples,
+                    self._grads,
+                    return_jacobian=True,
+                )
+
+                self._grads = tree_map(_sum_inplace, self._grads)
+
+                self._dp = self._sr.compute_update(self._jac, self._grads, self._dp)
+
+        else:
+            # Computing updates using the simple gradient
+            self._grads = self._machine.vector_jacobian_prod(
+                samples_r, eloc_r / self._n_samples, self._grads
+            )
+
+            self._grads = tree_map(_sum_inplace, self._grads)
+
+            #  if Real pars but complex gradient, take only real part
+            # not necessary for SR because sr already does it.
+            if not self._machine.has_complex_parameters:
+                self._dp = tree_map(lambda x: x.real, self._grads)
+            else:
+                self._dp = self._grads
+
+        return self._dp
 
 
 class SweepOptLinMethod(LinMethod):
