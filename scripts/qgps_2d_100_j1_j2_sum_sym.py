@@ -40,7 +40,7 @@ sa.reset(True)
 sr = nk.optimizer.SR(ma)
 
 
-samples = 10000
+samples = 2000
 
 # Create the optimization driver
 gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=100)
@@ -54,7 +54,7 @@ if mpi.COMM_WORLD.Get_rank() == 0:
     np.save("epsilon.npy", ma._epsilon)
     np.save("best_epsilon.npy", best_epsilon)
 
-
+count = 0
 for it in gs.iter(3000,1):
     if mpi.COMM_WORLD.Get_rank() == 0:
         move("epsilon.npy", "epsilon_old.npy")
@@ -69,6 +69,9 @@ for it in gs.iter(3000,1):
                 best_epsilon = ma._epsilon.copy()
                 best_en_upper_bound = gs.energy.mean.real + gs.energy.error_of_mean
                 np.save("best_epsilon.npy", best_epsilon)
+    if count == 10:
+        count = 0
+        gs.n_samples = gs.n_samples + 50
 
 mpi.COMM_WORLD.Bcast(best_epsilon, root=0)
 
