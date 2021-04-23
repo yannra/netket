@@ -69,6 +69,7 @@ for it in gs.iter(3000,1):
                 best_epsilon = ma._epsilon.copy()
                 best_en_upper_bound = gs.energy.mean.real + gs.energy.error_of_mean
                 np.save("best_epsilon.npy", best_epsilon)
+    count += 1
     if count == 10:
         count = 0
         gs.n_samples = gs.n_samples + 50
