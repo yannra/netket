@@ -24,10 +24,9 @@ exchange = np.asarray([[0, 0, 0, 0], [0, 0, 2, 0], [0, 2, 0, 0], [0, 0, 0, 0]])
 
 ha = nk.custom.J1J2(g, J2=J2, msr=False)
 
-transl = symmetries.get_symms_square_lattice(L)
+transl = nk.custom.get_symms_square_lattice(L)
 
 ma = nk.machine.QGPSSumSym(ha.hilbert, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-ma._exp_kern_representation = False
 ma.init_random_parameters(sigma=0.05, start_from_uniform=False)
 
 # Optimizer
@@ -41,64 +40,42 @@ sa.reset(True)
 sr = nk.optimizer.SR(ma)
 
 
-max_opt = 4000
-
-arr = np.zeros(ma._epsilon.size, dtype=bool)
-arr[:max_opt] = True
-max_id = min(max_opt, arr.size)
-
 samples = 10000
 
 # Create the optimization driver
-gs = nk.custom.SweepOptStabSR(hamiltonian=ha, sampler=sa, n_samples=samples, sr=sr, n_discard=50, search_radius=2)
+gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=100)
+
+best_epsilon = ma._epsilon.copy()
+best_en_upper_bound = None
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
         fl.write("")
-    with open("sr_par.txt", "w") as fl:
-        fl.write("")
+    np.save("epsilon.npy", ma._epsilon)
+    np.save("best_epsilon.npy", best_epsilon)
 
-np.save("epsilon.npy", ma._epsilon)
 
-for it in gs.iter(3950,1):
+for it in gs.iter(3000,1):
     if mpi.COMM_WORLD.Get_rank() == 0:
         move("epsilon.npy", "epsilon_old.npy")
         np.save("epsilon.npy", ma._epsilon)
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
-        with open("sr_par.txt", "a") as fl:
-            fl.write("{}  {}\n".format(gs._diag_shift, gs._time_step))
-    if gs._diag_shift > 1:
-        gs._diag_shift = 0.01
-    if gs._time_step < 0.001 or gs._time_step > 0.1:
-        gs._time_step = 0.02
+        if best_en_upper_bound is None:
+            best_en_upper_bound = gs.energy.mean.real + gs.energy.error_of_mean
+        else:
+            if (gs.energy.mean.real  + gs.energy.error_of_mean) < best_en_upper_bound:
+                best_epsilon = ma._epsilon.copy()
+                best_en_upper_bound = gs.energy.mean.real + gs.energy.error_of_mean
+                np.save("best_epsilon.npy", best_epsilon)
 
-epsilon_avg = np.zeros(ma._epsilon.shape, dtype=ma._epsilon.dtype)
+mpi.COMM_WORLD.Bcast(best_epsilon, root=0)
 
-for it in gs.iter(50,1):
-    epsilon_avg += ma._epsilon
-    if mpi.COMM_WORLD.Get_rank() == 0:
-        move("epsilon.npy", "epsilon_old.npy")
-        np.save("epsilon.npy", ma._epsilon)
-        print(it,gs.energy)
-        with open("out.txt", "a") as fl:
-            fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
-        with open("sr_par.txt", "a") as fl:
-            fl.write("{}  {}\n".format(gs._diag_shift, gs._time_step))
-    if gs._diag_shift > 1:
-        gs._diag_shift = 0.01
-    if gs._time_step < 0.001:
-        gs._time_step = 0.02
-
-epsilon_avg /= 50
-
-ma._epsilon = epsilon_avg
-
+ma._epsilon = best_epsilon
 est = nk.variational.estimate_expectations(ha, sa, 50000, n_discard=100)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
-    np.save("epsilon_avg.npy", ma._epsilon)
     with open("result.txt", "a") as fl:
         fl.write("{}  {}  {}  {}\n".format(N, np.real(est.mean), np.imag(est.mean), est.error_of_mean))
 
