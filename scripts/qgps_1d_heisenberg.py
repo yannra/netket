@@ -1,6 +1,7 @@
 import numpy as np
 import netket as nk
 import sys
+from shutil import move
 import mpi4py.MPI as mpi
 import symmetries
 
@@ -19,20 +20,17 @@ g = nk.graph.Hypercube(length=L, n_dim=1, pbc=True)
 # Spin based Hilbert Space
 hi = nk.hilbert.Spin(s=0.5, total_sz=0.0, N=g.n_nodes)
 
-ha = nk.operator.Heisenberg(hi, g, J=0.25)
+ha = nk.custom.J1J2(g, J2=0.0, msr=False)
 
-transl = symmetries.get_symms_chain(L)
+
+transl = nk.custom.get_symms_chain(L)
 
 if mode == 0:
     ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
 elif mode == 1:
     ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-elif mode == 2:
-    ma = nk.machine.QGPSSumSymExp(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
-else:
-    ma = nk.machine.QGPSProdSymExp(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
 
-ma.init_random_parameters(sigma=0.1)
+ma.init_random_parameters(sigma=0.05, start_from_uniform=False)
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.02)
@@ -44,64 +42,46 @@ sa.reset(True)
 # Stochastic Reconfiguration
 sr = nk.optimizer.SR(ma)
 
-samples = L * 100
-
-max_opt = 2500
-
-arr = np.zeros(ma._epsilon.size, dtype=bool)
-arr[:max_opt] = True
-max_id = min(max_opt, arr.size)
-
-class SiteSweepOpt(nk.Vmc):
-    def iter(self, n_steps, step=1):
-        global max_id
-        count = 0
-        for _ in range(0, n_steps, step):
-            for i in range(0, step):
-                ma.change_opt_ids(arr.reshape(ma._epsilon.shape))
-                dp = self._forward_and_backward()
-                self.update_parameters(dp)
-                arr.fill(False)
-                arr[max_id:(max_id+max_opt)] = True
-                if max_id + max_opt > arr.size:
-                    arr[:(max_id + max_opt - arr.size)] = True
-                    max_id = min((max_id + max_opt - arr.size), arr.size)
-                else:
-                    max_id = min((max_id + max_opt), arr.size)
-                if i == 0:
-                    yield self.step_count
-                count += 1
-
+samples = 1000
 
 # Create the optimization driver
-gs = SiteSweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr)
+gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=100)
+
+best_epsilon = ma._epsilon.copy()
+best_en_upper_bound = None
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("out.txt", "w") as fl:
         fl.write("")
+    np.save("epsilon.npy", ma._epsilon)
+    np.save("best_epsilon.npy", best_epsilon)
 
-for it in gs.iter(1950,1):
+count = 0
+for it in gs.iter(2000,1):
     if mpi.COMM_WORLD.Get_rank() == 0:
+        move("epsilon.npy", "epsilon_old.npy")
+        np.save("epsilon.npy", ma._epsilon)
         print(it,gs.energy)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
+        if best_en_upper_bound is None:
+            best_en_upper_bound = gs.energy.mean.real + gs.energy.error_of_mean
+        else:
+            if (gs.energy.mean.real  + gs.energy.error_of_mean) < best_en_upper_bound:
+                best_epsilon = ma._epsilon.copy()
+                best_en_upper_bound = gs.energy.mean.real + gs.energy.error_of_mean
+                np.save("best_epsilon.npy", best_epsilon)
+    count += 1
+    if count == 10:
+        count = 0
+        gs.n_samples = gs.n_samples + 50
 
-epsilon_avg = np.zeros(ma._epsilon.shape, dtype=ma._epsilon.dtype)
+mpi.COMM_WORLD.Bcast(best_epsilon, root=0)
 
-for it in gs.iter(50,1):
-    epsilon_avg += ma._epsilon
-    if mpi.COMM_WORLD.Get_rank() == 0:
-        print(it,gs.energy)
-        with open("out.txt", "a") as fl:
-            fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
-
-epsilon_avg /= 50
-
-ma._epsilon = epsilon_avg
+ma._epsilon = best_epsilon
 
 est = nk.variational.estimate_expectations(ha, sa, 50000, n_discard=100)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
-    np.save("epsilon_avg.npy", ma._epsilon)
     with open("result.txt", "a") as fl:
         fl.write("{}  {}  {}  {}  {}\n".format(L, N, np.real(est.mean), np.imag(est.mean), est.error_of_mean))
