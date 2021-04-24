@@ -46,7 +46,7 @@ class SweepOpt(nk.Vmc):
             self._default_shift = self._sr._diag_shift
         self._check_improvement = check_improvement
         self._previous_mean = None
-        self._previous_variance = None
+        self._previous_error = None
 
     def iter(self, n_steps, step=1):
         for count in range(0, n_steps, step):
@@ -72,7 +72,7 @@ class SweepOpt(nk.Vmc):
                     else:
                         np.copyto(self._valid_par, self._sampler._machine._epsilon)
                     self._previous_mean = self._loss_stats.mean.real
-                    self._previous_variance = self._loss_stats.variance
+                    self._previous_error = self._loss_stats.error_of_mean
                     if self._sr is not None:
                         self._sr._diag_shift = self._default_shift
                     self.optimizer._learning_rate = self._default_timestep
@@ -129,7 +129,7 @@ class SweepOpt(nk.Vmc):
         assert(self._loss_stats.mean.imag < 1.0)
 
         if self._check_improvement and self._previous_mean is not None:
-            assert((self._loss_stats.mean.real - np.sqrt(self._loss_stats.variance)) < (self._previous_mean + np.sqrt(self._previous_variance)))
+            assert((self._loss_stats.mean.real - self._loss_stats.error_of_mean) < (self._previous_mean + self._previous_error))
 
 
 
