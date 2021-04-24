@@ -70,7 +70,7 @@ class MetropolisHastings(AbstractSampler):
         self._total_samples = 0
 
     @staticmethod
-    @jit(nopython=True)
+    # @jit(nopython=True)
     def acceptance_kernel(
         state, state1, log_values, log_values_1, log_prob_corr, machine_pow
     ):
