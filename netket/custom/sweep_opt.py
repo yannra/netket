@@ -87,8 +87,7 @@ class SweepOpt(nk.Vmc):
                 except:
                     print(_rank, "reset applied", flush = True)
                     assert(self._valid_par is not None)
-                    if _rank == 0:
-                        print(abs(self._sampler._machine._epsilon - self._valid_par).max(), abs(self._sampler._machine._epsilon).max(), abs(self._valid_par).max(), flush = True)
+                    print(_rank, abs(self._sampler._machine._epsilon - self._valid_par).max(), abs(self._sampler._machine._epsilon).max(), abs(self._valid_par).max(), flush = True)
                     np.copyto(self._sampler._machine._epsilon, self._valid_par)
                     np.copyto(self._sampler._machine._opt_params, self._sampler._machine._epsilon[self._sampler._machine._der_ids >= 0])
                     self.optimizer._learning_rate /= 2
