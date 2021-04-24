@@ -98,6 +98,8 @@ class SweepOpt(nk.Vmc):
                     check_improvement = self._check_improvement
                     self._check_improvement = False
                     dp = self._forward_and_backward()
+                    self._previous_mean = self._loss_stats.mean.real
+                    self._previous_error = self._loss_stats.error_of_mean
                     self._check_improvement = check_improvement
 
                 if i == 0:
