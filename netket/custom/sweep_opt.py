@@ -65,14 +65,23 @@ class SweepOpt(nk.Vmc):
                 self._sampler._machine.change_opt_ids(opt_tensor)
                 if self.sr is not None and self.max_opt < self.opt_arr.size:
                     self.sr._x0 = None
+                err = 0
                 try:
                     dp = self._forward_and_backward()
+                except:
+                    err = 1
+
+                error = _MPI_comm.allreduce(err)
+                _MPI_comm.barrier()
+
+                if error == 0:
                     if self._valid_par is None:
                         self._valid_par = self._sampler._machine._epsilon.copy()
                     else:
                         np.copyto(self._valid_par, self._sampler._machine._epsilon)
                     self._previous_mean = self._loss_stats.mean.real
                     self._previous_error = self._loss_stats.error_of_mean
+                    self._prev_samp = self._samples.copy()
                     if self._sr is not None:
                         self._sr._diag_shift = self._default_shift
                     self.optimizer._learning_rate = self._default_timestep
@@ -84,12 +93,13 @@ class SweepOpt(nk.Vmc):
                         self.max_id = min((self.max_id + self.max_opt - self.opt_arr.size), self.opt_arr.size)
                     else:
                         self.max_id = min((self.max_id + self.max_opt), self.opt_arr.size)
-                except:
-                    print(_rank, "reset applied", flush = True)
+                else:
                     assert(self._valid_par is not None)
-                    print(_rank, abs(self._sampler._machine._epsilon - self._valid_par).max(), abs(self._sampler._machine._epsilon).max(), abs(self._valid_par).max(), flush = True)
+                    if self.sr is not None:
+                        self.sr._x0 = None
                     np.copyto(self._sampler._machine._epsilon, self._valid_par)
                     np.copyto(self._sampler._machine._opt_params, self._sampler._machine._epsilon[self._sampler._machine._der_ids >= 0])
+                    self._sampler._machine.reset()
                     self.optimizer._learning_rate /= 2
                     if self._sr is not None:
                         self._sr._diag_shift *= 2
@@ -117,25 +127,41 @@ class SweepOpt(nk.Vmc):
             n_steps (int): Number of steps to perform.
         """
 
-        self._sampler.reset()
+        err = 0
+        try:
+            self._sampler.reset(init_random=False)
+            # Burnout phase
+            self._sampler.generate_samples(self._n_discard)
 
-        # Burnout phase
-        self._sampler.generate_samples(self._n_discard)
+            # Generate samples and store them
+            self._samples = self._sampler.generate_samples(
+                self._n_samples_node, samples=self._samples
+            )
+        except:
+            err = 1
 
-        # Generate samples and store them
-        self._samples = self._sampler.generate_samples(
-            self._n_samples_node, samples=self._samples
-        )
+        error = _MPI_comm.allreduce(err)
+        _MPI_comm.barrier()
+        assert(error == 0)
 
-        # Compute the local energy estimator and average Energy
-        eloc, self._loss_stats = self._get_mc_stats(self._ham)
+        err = 0
+        try:
+            # Compute the local energy estimator and average Energy
+            eloc, self._loss_stats = self._get_mc_stats(self._ham)
 
-        assert(self._loss_stats.mean.imag < 1.0)
+            assert(abs(self._loss_stats.mean.imag) < 1.0)
+            assert(np.isfinite(eloc).all())
+            if self._check_improvement and self._previous_mean is not None:
+                if (self._loss_stats.mean.real - self._loss_stats.error_of_mean) >= (self._previous_mean + self._previous_error):
+                    if _rank == 0:
+                        print("En improvement fail", flush=True)
+                assert((self._loss_stats.mean.real - self._loss_stats.error_of_mean) < (self._previous_mean + self._previous_error))
+        except:
+            err = 1
 
-        if self._check_improvement and self._previous_mean is not None:
-            assert((self._loss_stats.mean.real - self._loss_stats.error_of_mean) < (self._previous_mean + self._previous_error))
-
-
+        error = _MPI_comm.allreduce(err)
+        _MPI_comm.barrier()
+        assert(error == 0)
 
         # Center the local energy
         eloc -= _mean(eloc)
@@ -147,9 +173,18 @@ class SweepOpt(nk.Vmc):
         if self._sr:
             if self._sr.onthefly:
 
-                self._grads = self._machine.vector_jacobian_prod(
-                    samples_r, eloc_r / self._n_samples, self._grads
-                )
+                err = 0
+                try:
+                    self._grads = self._machine.vector_jacobian_prod(
+                        samples_r, eloc_r / self._n_samples, self._grads
+                    )
+                    assert(np.isfinite(self._grads).all())
+                except:
+                    err = 1
+
+                error = _MPI_comm.allreduce(err)
+                _MPI_comm.barrier()
+                assert(error == 0)
 
                 self._grads = tree_map(_sum_inplace, self._grads)
 
@@ -158,23 +193,42 @@ class SweepOpt(nk.Vmc):
                 )
 
             else:
-                # When using the SR (Natural gradient) we need to have the full jacobian
-                self._grads, self._jac = self._machine.vector_jacobian_prod(
-                    samples_r,
-                    eloc_r / self._n_samples,
-                    self._grads,
-                    return_jacobian=True,
-                )
+                err = 0
+                try:
+                    # When using the SR (Natural gradient) we need to have the full jacobian
+                    self._grads, self._jac = self._machine.vector_jacobian_prod(
+                        samples_r,
+                        eloc_r / self._n_samples,
+                        self._grads,
+                        return_jacobian=True,
+                    )
+                    assert(np.isfinite(self._grads).all())
+                    assert(np.isfinite(self._jac).all())
+                except:
+                    err = 1
+                
+                error = _MPI_comm.allreduce(err)
+                _MPI_comm.barrier()
+                assert(error == 0)
 
                 self._grads = tree_map(_sum_inplace, self._grads)
 
                 self._dp = self._sr.compute_update(self._jac, self._grads, self._dp)
 
         else:
-            # Computing updates using the simple gradient
-            self._grads = self._machine.vector_jacobian_prod(
-                samples_r, eloc_r / self._n_samples, self._grads
-            )
+            err = 0
+            try:
+                # Computing updates using the simple gradient
+                self._grads = self._machine.vector_jacobian_prod(
+                    samples_r, eloc_r / self._n_samples, self._grads
+                )
+                assert(np.isfinite(self._grads).all())
+            except:
+                err = 1
+
+            error = _MPI_comm.allreduce(err)
+            _MPI_comm.barrier()
+            assert(error == 0)
 
             self._grads = tree_map(_sum_inplace, self._grads)
 
