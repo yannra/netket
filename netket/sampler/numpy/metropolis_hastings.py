@@ -80,8 +80,8 @@ class MetropolisHastings(AbstractSampler):
             prob = _np.exp(
                 machine_pow * (log_values_1[i] - log_values[i] + log_prob_corr[i]).real
             )
-            # if math.isnan(prob):
-            #     print(log_values_1[i], log_values[i], state[i], state1[i])
+            if math.isnan(prob):
+                print(log_values_1[i], log_values[i], state[i], state1[i])
             assert not math.isnan(prob)
 
             if prob > _random.uniform(0, 1):
