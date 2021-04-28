@@ -8,6 +8,7 @@ import symmetries
 L = int(sys.argv[1])
 N = int(sys.argv[2])
 mode = int(sys.argv[3])
+msr = bool(int(sys.argv[4]))
 
 rank = mpi.COMM_WORLD.Get_rank()
 
@@ -20,8 +21,7 @@ g = nk.graph.Hypercube(length=L, n_dim=1, pbc=True)
 # Spin based Hilbert Space
 hi = nk.hilbert.Spin(s=0.5, total_sz=0.0, N=g.n_nodes)
 
-ha = nk.custom.J1J2(g, J2=0.0, msr=False)
-
+ha = nk.custom.J1J2(g, J2=0.0, msr=msr)
 
 transl = nk.custom.get_symms_chain(L)
 
@@ -29,7 +29,10 @@ if mode == 0:
     ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
 elif mode == 1:
     ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
+elif mode == 2:
+    ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=None, spin_flip_sym=False, dtype=complex)
 
+ma._exp_kern_representation = False
 ma.init_random_parameters(sigma=0.05, start_from_uniform=False)
 
 # Optimizer
@@ -42,7 +45,7 @@ sa.reset(True)
 # Stochastic Reconfiguration
 sr = nk.optimizer.SR(ma)
 
-samples = 1000
+samples = 2000
 
 # Create the optimization driver
 gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=100)
@@ -57,7 +60,7 @@ if mpi.COMM_WORLD.Get_rank() == 0:
     np.save("best_epsilon.npy", best_epsilon)
 
 count = 0
-for it in gs.iter(2000,1):
+for it in gs.iter(3000,1):
     if mpi.COMM_WORLD.Get_rank() == 0:
         move("epsilon.npy", "epsilon_old.npy")
         np.save("epsilon.npy", ma._epsilon)
@@ -72,9 +75,9 @@ for it in gs.iter(2000,1):
                 best_en_upper_bound = gs.energy.mean.real + gs.energy.error_of_mean
                 np.save("best_epsilon.npy", best_epsilon)
     count += 1
-    if count == 10:
+    if count == 50:
         count = 0
-        gs.n_samples = gs.n_samples + 50
+        gs.n_samples = gs.n_samples + 100
 
 mpi.COMM_WORLD.Bcast(best_epsilon, root=0)
 
