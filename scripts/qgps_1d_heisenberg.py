@@ -32,12 +32,7 @@ elif mode == 1:
 elif mode == 2:
     ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=None, spin_flip_sym=False, dtype=complex)
 
-ma._exp_kern_representation = False
 ma.init_random_parameters(sigma=0.05, start_from_uniform=False)
-
-ma._epsilon[0, :, :] -= 1.
-
-ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.02)
@@ -86,9 +81,11 @@ try:
 except:
     pass
 
-mpi.COMM_WORLD.Bcast(best_epsilon, root=0)
-
+mpi.COMM_WORLD.Bcast(best_epsilon, root=)
+0
 ma._epsilon = best_epsilon
+ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
+ma.reset()
 
 est = nk.variational.estimate_expectations(ha, sa, 50000, n_discard=100)
 
