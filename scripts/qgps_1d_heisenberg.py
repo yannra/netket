@@ -64,24 +64,27 @@ if mpi.COMM_WORLD.Get_rank() == 0:
     np.save("best_epsilon.npy", best_epsilon)
 
 count = 0
-for it in gs.iter(3000,1):
-    if mpi.COMM_WORLD.Get_rank() == 0:
-        move("epsilon.npy", "epsilon_old.npy")
-        np.save("epsilon.npy", ma._epsilon)
-        print(it,gs.energy)
-        with open("out.txt", "a") as fl:
-            fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
-        if best_en_upper_bound is None:
-            best_en_upper_bound = gs.energy.mean.real + gs.energy.error_of_mean
-        else:
-            if (gs.energy.mean.real  + gs.energy.error_of_mean) < best_en_upper_bound:
-                best_epsilon = ma._epsilon.copy()
+try:
+    for it in gs.iter(3000,1):
+        if mpi.COMM_WORLD.Get_rank() == 0:
+            move("epsilon.npy", "epsilon_old.npy")
+            np.save("epsilon.npy", ma._epsilon)
+            print(it,gs.energy)
+            with open("out.txt", "a") as fl:
+                fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
+            if best_en_upper_bound is None:
                 best_en_upper_bound = gs.energy.mean.real + gs.energy.error_of_mean
-                np.save("best_epsilon.npy", best_epsilon)
-    count += 1
-    if count == 50:
-        count = 0
-        gs.n_samples = gs.n_samples + 100
+            else:
+                if (gs.energy.mean.real  + gs.energy.error_of_mean) < best_en_upper_bound:
+                    best_epsilon = ma._epsilon.copy()
+                    best_en_upper_bound = gs.energy.mean.real + gs.energy.error_of_mean
+                    np.save("best_epsilon.npy", best_epsilon)
+        count += 1
+        if count == 50:
+            count = 0
+            gs.n_samples = gs.n_samples + 100
+except:
+    pass
 
 mpi.COMM_WORLD.Bcast(best_epsilon, root=0)
 
