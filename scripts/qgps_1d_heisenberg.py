@@ -35,6 +35,10 @@ elif mode == 2:
 ma._exp_kern_representation = False
 ma.init_random_parameters(sigma=0.05, start_from_uniform=False)
 
+ma._epsilon[0, :, :] -= 1.
+
+ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
+
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.02)
 
