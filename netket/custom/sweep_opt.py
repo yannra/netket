@@ -139,6 +139,7 @@ class SweepOpt(nk.Vmc):
             )
         except:
             err = 1
+            print(_rank, "sampling failed", flush=True)
 
         error = _MPI_comm.allreduce(err)
         _MPI_comm.barrier()
@@ -158,6 +159,7 @@ class SweepOpt(nk.Vmc):
                 assert((self._loss_stats.mean.real - self._loss_stats.error_of_mean) < (self._previous_mean + self._previous_error))
         except:
             err = 1
+            print(_rank, "en calc failed", flush=True)
 
         error = _MPI_comm.allreduce(err)
         _MPI_comm.barrier()
@@ -181,6 +183,7 @@ class SweepOpt(nk.Vmc):
                     assert(np.isfinite(self._grads).all())
                 except:
                     err = 1
+                    print(_rank, "Grad calc failed", flush=True)
 
                 error = _MPI_comm.allreduce(err)
                 _MPI_comm.barrier()
@@ -206,6 +209,7 @@ class SweepOpt(nk.Vmc):
                     assert(np.isfinite(self._jac).all())
                 except:
                     err = 1
+                    print(_rank, "Grad calc failed", flush=True)
                 
                 error = _MPI_comm.allreduce(err)
                 _MPI_comm.barrier()
@@ -225,6 +229,7 @@ class SweepOpt(nk.Vmc):
                 assert(np.isfinite(self._grads).all())
             except:
                 err = 1
+                print(_rank, "Grad calc failed", flush=True)
 
             error = _MPI_comm.allreduce(err)
             _MPI_comm.barrier()
