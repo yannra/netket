@@ -82,6 +82,7 @@ for it in gs.iter(4000,1):
         gs.n_samples = gs.n_samples + 100
 
 mpi.COMM_WORLD.Bcast(best_epsilon, root=0)
+mpi.COMM_WORLD.barrier()
 
 ma._epsilon = best_epsilon
 est = nk.variational.estimate_expectations(ha, sa, 50000, n_discard=100)
