@@ -85,6 +85,8 @@ class QGPS(AbstractMachine):
         for i in range(self._Smap.shape[0]):
             for j in range(self._Smap.shape[1]):
                 self._Smap_inverse[i, self._Smap[i,j]] = j
+        
+        self.bias = 0.0
 
         super().__init__(hilbert, dtype=dtype)
     
@@ -164,9 +166,9 @@ class QGPS(AbstractMachine):
             else:
                 self._compute_site_prod_std_form(self._ref_conf, self._site_product, self._epsilon, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign)
         if self._exp_kern_representation:
-            val = self._log_val_kernel_exp_form(x, out, self._ref_conf, self._site_product, self._epsilon, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign)
+            val = self._log_val_kernel_exp_form(x, out, self._ref_conf, self._site_product, self._epsilon, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign, self.bias)
         else:
-            val = self._log_val_kernel_std_form(x, out, self._ref_conf, self._site_product, self._epsilon, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign)
+            val = self._log_val_kernel_std_form(x, out, self._ref_conf, self._site_product, self._epsilon, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign, self.bias)
         self.value_time += time.time() - start
         return val
 
@@ -193,9 +195,9 @@ class QGPS(AbstractMachine):
             else:
                 self._compute_site_prod_std_form(self._ref_conf, self._site_product, self._epsilon, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign)
         if self._exp_kern_representation:
-            der = self._der_log_kernel_exp_form(x, out,  self._ref_conf, self._site_product, self._epsilon, self._npar, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign, self._der_ids)
+            der = self._der_log_kernel_exp_form(x, out,  self._ref_conf, self._site_product, self._epsilon, self._npar, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign, self._der_ids, self.bias)
         else:
-            der = self._der_log_kernel_std_form(x, out,  self._ref_conf, self._site_product, self._epsilon, self._npar, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign, self._der_ids)
+            der = self._der_log_kernel_std_form(x, out,  self._ref_conf, self._site_product, self._epsilon, self._npar, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign, self._der_ids, self.bias)
         self.der_time += time.time() - start
         return der
 
@@ -270,7 +272,7 @@ class QGPSSumSym(QGPS):
 
     @staticmethod
     @jit(nopython=True)
-    def _log_val_kernel_exp_form(x, out, ref_conf, site_product, epsilon, Smap, Smap_inverse, sym_spin_flip_sign):
+    def _log_val_kernel_exp_form(x, out, ref_conf, site_product, epsilon, Smap, Smap_inverse, sym_spin_flip_sign, bias):
         if out is None:
             out = _np.empty(x.shape[0], dtype=_np.complex128)
 
@@ -294,13 +296,13 @@ class QGPSSumSym(QGPS):
                 arg = _np.complex128(0.0)
                 for w in range(epsilon.shape[1]):
                     arg += _np.exp(site_product[w, t])
-                out[b] += _np.exp(arg)
+                out[b] += _np.exp(arg+bias)
             out[b] = _np.log(out[b])
         return out
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel_exp_form(x, out, ref_conf, site_product, epsilon, npar, Smap, Smap_inverse, sym_spin_flip_sign, der_ids):
+    def _der_log_kernel_exp_form(x, out, ref_conf, site_product, epsilon, npar, Smap, Smap_inverse, sym_spin_flip_sign, der_ids, bias):
         batch_size = x.shape[0]
 
         if out is None:
@@ -327,7 +329,7 @@ class QGPSSumSym(QGPS):
                 argument = _np.complex128(0.0)
                 for w in range(epsilon.shape[1]):
                     argument += _np.exp(site_product[w,t])
-                prefactor = _np.exp(argument)
+                prefactor = _np.exp(argument+bias)
 
                 for w in range(epsilon.shape[1]):
                     derivative = _np.exp(site_product[w,t])
@@ -344,7 +346,7 @@ class QGPSSumSym(QGPS):
     
     @staticmethod
     @jit(nopython=True)
-    def _log_val_kernel_std_form(x, out, ref_conf, site_product, epsilon, Smap, Smap_inverse, sym_spin_flip_sign):
+    def _log_val_kernel_std_form(x, out, ref_conf, site_product, epsilon, Smap, Smap_inverse, sym_spin_flip_sign, bias):
         eps = _np.finfo(_np.double).eps
 
         if out is None:
@@ -391,13 +393,13 @@ class QGPSSumSym(QGPS):
                 arg = _np.complex128(0.0)
                 for w in range(epsilon.shape[1]):
                     arg += site_product[w, t]
-                out[b] += _np.exp(arg)
+                out[b] += _np.exp(arg+bias)
             out[b] = _np.log(out[b])
         return out
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel_std_form(x, out, ref_conf, site_product, epsilon, npar, Smap, Smap_inverse, sym_spin_flip_sign, der_ids):
+    def _der_log_kernel_std_form(x, out, ref_conf, site_product, epsilon, npar, Smap, Smap_inverse, sym_spin_flip_sign, der_ids, bias):
         batch_size = x.shape[0]
         eps = _np.finfo(_np.double).eps
 
@@ -448,7 +450,7 @@ class QGPSSumSym(QGPS):
                 argument = _np.complex128(0.0)
                 for w in range(epsilon.shape[1]):
                     argument += site_product[w,t]
-                prefactor = _np.exp(argument)
+                prefactor = _np.exp(argument+bias)
 
                 for w in range(epsilon.shape[1]):
                     derivative = site_product[w,t]
@@ -521,9 +523,9 @@ class QGPSBasisSym(QGPS):
             else:
                 self._compute_site_prod_std_form(self._ref_conf, self._site_product, self._epsilon)
         if self._exp_kern_representation:
-            val = self._log_val_kernel_exp_form(x, out, self._ref_conf, self._site_product, self._epsilon)
+            val = self._log_val_kernel_exp_form(x, out, self._ref_conf, self._site_product, self._epsilon, self.bias)
         else:
-            val = self._log_val_kernel_std_form(x, out, self._ref_conf, self._site_product, self._epsilon)
+            val = self._log_val_kernel_std_form(x, out, self._ref_conf, self._site_product, self._epsilon, self.bias)
         return val
 
     def der_log(self, x, out=None):
@@ -554,9 +556,9 @@ class QGPSBasisSym(QGPS):
             else:
                 self._compute_site_prod_std_form(self._ref_conf, self._site_product, self._epsilon)
         if self._exp_kern_representation:
-            der = self._der_log_kernel_exp_form(x, out,  self._ref_conf, self._site_product, self._epsilon, self._npar, self._der_ids)
+            der = self._der_log_kernel_exp_form(x, out,  self._ref_conf, self._site_product, self._epsilon, self._npar, self._der_ids, self.bias)
         else:
-            der = self._der_log_kernel_std_form(x, out,  self._ref_conf, self._site_product, self._epsilon, self._npar, self._der_ids)
+            der = self._der_log_kernel_std_form(x, out,  self._ref_conf, self._site_product, self._epsilon, self._npar, self._der_ids, self.bias)
         return der
 
     @staticmethod
@@ -604,7 +606,7 @@ class QGPSBasisSym(QGPS):
 
     @staticmethod
     @jit(nopython=True)
-    def _log_val_kernel_exp_form(x, out, ref_conf, site_product, epsilon):
+    def _log_val_kernel_exp_form(x, out, ref_conf, site_product, epsilon, bias):
         if out is None:
             out = _np.empty(x.shape[0], dtype=_np.complex128)
 
@@ -621,14 +623,14 @@ class QGPSBasisSym(QGPS):
                             site_product[w] += (epsilon[pos, w, 1] - epsilon[pos, w, 0])
                 ref_conf[pos] = x[b, pos]
 
-            out[b] = _np.complex128(0.0)
+            out[b] = _np.complex128(bias)
             for w in range(epsilon.shape[1]):
                 out[b] += _np.exp(site_product[w])
         return out
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel_exp_form(x, out, ref_conf, site_product, epsilon, npar, der_ids):
+    def _der_log_kernel_exp_form(x, out, ref_conf, site_product, epsilon, npar, der_ids, bias):
         batch_size = x.shape[0]
 
         if out is None:
@@ -648,7 +650,7 @@ class QGPSBasisSym(QGPS):
                 ref_conf[pos] = x[b, pos]
 
             for w in range(epsilon.shape[1]):
-                derivative = _np.exp(site_product[w])
+                derivative = _np.exp(site_product[w]+bias)
                 for i in range(x.shape[1]):
                     if x[b, i] < 0:
                         if der_ids[i, w, 0] >= 0:
@@ -660,7 +662,7 @@ class QGPSBasisSym(QGPS):
 
     @staticmethod
     @jit(nopython=True)
-    def _log_val_kernel_std_form(x, out, ref_conf, site_product, epsilon):
+    def _log_val_kernel_std_form(x, out, ref_conf, site_product, epsilon, bias):
         eps = _np.finfo(_np.double).eps
 
         if out is None:
@@ -696,14 +698,14 @@ class QGPSBasisSym(QGPS):
                         else:
                             site_product[w] *= epsilon[i, w, 1]
 
-            out[b] = _np.complex128(0.0)
+            out[b] = _np.complex128(bias)
             for w in range(epsilon.shape[1]):
                 out[b] += site_product[w]
         return out
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel_std_form(x, out, ref_conf, site_product, epsilon, npar, der_ids):
+    def _der_log_kernel_std_form(x, out, ref_conf, site_product, epsilon, npar, der_ids, bias):
         batch_size = x.shape[0]
         eps = _np.finfo(_np.double).eps
 
@@ -783,12 +785,12 @@ class QGPSProdSym(QGPS):
 
     @staticmethod
     @jit(nopython=True)
-    def _log_val_kernel_exp_form(x, out, ref_conf, site_product, epsilon, Smap, Smap_inverse, sym_spin_flip_sign):
+    def _log_val_kernel_exp_form(x, out, ref_conf, site_product, epsilon, Smap, Smap_inverse, sym_spin_flip_sign, bias):
         if out is None:
             out = _np.empty(x.shape[0], dtype=_np.complex128)
 
         for b in range(x.shape[0]):
-            out[b] = 0.0
+            out[b] = bias
 
             # update site product
             for pos in range(x.shape[1]):
@@ -810,7 +812,7 @@ class QGPSProdSym(QGPS):
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel_exp_form(x, out, ref_conf, site_product, epsilon, npar, Smap, Smap_inverse, sym_spin_flip_sign, der_ids):
+    def _der_log_kernel_exp_form(x, out, ref_conf, site_product, epsilon, npar, Smap, Smap_inverse, sym_spin_flip_sign, der_ids, bias):
         batch_size = x.shape[0]
         if out is None:
             out = _np.empty((batch_size, npar), dtype=_np.complex128)
@@ -845,14 +847,14 @@ class QGPSProdSym(QGPS):
     
     @staticmethod
     @jit(nopython=True)
-    def _log_val_kernel_std_form(x, out, ref_conf, site_product, epsilon, Smap, Smap_inverse, sym_spin_flip_sign):
+    def _log_val_kernel_std_form(x, out, ref_conf, site_product, epsilon, Smap, Smap_inverse, sym_spin_flip_sign, bias):
         eps = _np.finfo(_np.double).eps
 
         if out is None:
             out = _np.empty(x.shape[0], dtype=_np.complex128)
 
         for b in range(x.shape[0]):
-            out[b] = 0.0
+            out[b] = bias
 
             # update site product
             recompute = False
@@ -895,7 +897,7 @@ class QGPSProdSym(QGPS):
 
     @staticmethod
     @jit(nopython=True)
-    def _der_log_kernel_std_form(x, out, ref_conf, site_product, epsilon, npar, Smap, Smap_inverse, sym_spin_flip_sign, der_ids):
+    def _der_log_kernel_std_form(x, out, ref_conf, site_product, epsilon, npar, Smap, Smap_inverse, sym_spin_flip_sign, der_ids, bias):
         batch_size = x.shape[0]
         eps = _np.finfo(_np.double).eps
 

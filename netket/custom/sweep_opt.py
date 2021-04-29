@@ -16,6 +16,8 @@ from netket.utils import (
     node_number as _rank
 )
 
+from mpi4py import MPI
+
 from netket.vmc_common import info, tree_map
 
 
@@ -30,7 +32,8 @@ class SweepOpt(nk.Vmc):
         sr=None,
         max_opt = 3000,
         sweep_by_bonds = True,
-        check_improvement = True
+        check_improvement = True,
+        reset_bias = True
     ):
         super().__init__(hamiltonian, sampler, optimizer, n_samples, n_discard=n_discard, sr=sr)
         self.max_opt = max_opt
@@ -47,6 +50,7 @@ class SweepOpt(nk.Vmc):
         self._check_improvement = check_improvement
         self._previous_mean = None
         self._previous_error = None
+        self._reset_bias = reset_bias
 
     def iter(self, n_steps, step=1):
         for count in range(0, n_steps, step):
@@ -113,6 +117,12 @@ class SweepOpt(nk.Vmc):
                     self._previous_mean = self._loss_stats.mean.real
                     self._previous_error = self._loss_stats.error_of_mean
                     self._check_improvement = check_improvement
+
+                if self._reset_bias:
+                    bias = self._sampler._log_values.real.max()
+                    bias_update = _MPI_comm.allreduce(bias, op=MPI.MAX)
+                    _MPI_comm.barrier()
+                    self._sampler._machine.bias -= bias_update
 
                 if i == 0:
                     yield self.step_count
