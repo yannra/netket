@@ -81,8 +81,8 @@ try:
 except:
     pass
 
-mpi.COMM_WORLD.Bcast(best_epsilon, root=)
-0
+mpi.COMM_WORLD.Bcast(best_epsilon, root=0)
+
 ma._epsilon = best_epsilon
 ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
 ma.reset()
