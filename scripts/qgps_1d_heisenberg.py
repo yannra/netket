@@ -38,13 +38,13 @@ ma.init_random_parameters(sigma=0.05, start_from_uniform=False)
 op = nk.optimizer.Sgd(ma, learning_rate=0.02)
 
 # Sampler
-sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=1,n_chains=1)
+sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=L,n_chains=1)
 sa.reset(True)
 
 # Stochastic Reconfiguration
 sr = nk.optimizer.SR(ma)
 
-samples = 2000
+samples = 4000
 
 # Create the optimization driver
 gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=100)
@@ -89,7 +89,7 @@ ma._epsilon = best_epsilon
 ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
 ma.reset()
 
-est = nk.variational.estimate_expectations(ha, sa, 50000, n_discard=100)
+est = nk.variational.estimate_expectations(ha, sa, 50000//mpi.COMM_WORLD.size, n_discard=200)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("result.txt", "a") as fl:
