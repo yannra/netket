@@ -43,6 +43,7 @@ class SweepOpt(nk.Vmc):
         self.max_id = min(self.max_opt, self.opt_arr.size)
         self.sweep_by_bonds = sweep_by_bonds
         self._valid_par = None
+        self._valid_samps = None
         assert(isinstance(self.optimizer, nk.optimizer.numpy.Sgd))
         self._default_timestep = self.optimizer._learning_rate
         if self._sr is not None:
@@ -81,11 +82,12 @@ class SweepOpt(nk.Vmc):
                 if error == 0:
                     if self._valid_par is None:
                         self._valid_par = self._sampler._machine._epsilon.copy()
+                        self._valid_samps = self._sampler._state.copy()
                     else:
                         np.copyto(self._valid_par, self._sampler._machine._epsilon)
+                        np.copyto(self._valid_samps, self._sampler._state)
                     self._previous_mean = self._loss_stats.mean.real
                     self._previous_error = self._loss_stats.error_of_mean
-                    self._prev_samp = self._samples.copy()
                     if self._sr is not None:
                         self._sr._diag_shift = self._default_shift
                     self.optimizer._learning_rate = self._default_timestep
@@ -103,6 +105,7 @@ class SweepOpt(nk.Vmc):
                         self.sr._x0 = None
                     np.copyto(self._sampler._machine._epsilon, self._valid_par)
                     np.copyto(self._sampler._machine._opt_params, self._sampler._machine._epsilon[self._sampler._machine._der_ids >= 0])
+                    np.copyto(self._sampler._state, self._valid_samps)
                     self._sampler._machine.reset()
                     self.optimizer._learning_rate /= 2
                     if self._sr is not None:
@@ -139,7 +142,7 @@ class SweepOpt(nk.Vmc):
 
         err = 0
         try:
-            self._sampler.reset(init_random=True)
+            self._sampler.reset()
             # Burnout phase
             self._sampler.generate_samples(self._n_discard)
 
