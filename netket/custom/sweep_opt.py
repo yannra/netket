@@ -260,18 +260,19 @@ class SweepOptLinMethod(LinMethod):
         self,
         hamiltonian,
         sampler,
-        optimizer,
         n_samples,
         shift = 1,
         epsilon = 0.5,
+        timestep = 1.0,
         update_shift = True,
         corr_samp = None,
-        rescale_update = True,
+        rescale_update=True,
         n_discard=None,
+        reestimate_shift=True,
         max_opt = 3000,
         sweep_by_bonds = True,
     ):
-        super().__init__(hamiltonian, sampler, optimizer, n_samples, shift=shift, epsilon=epsilon,
+        super().__init__(hamiltonian, sampler, n_samples, shift=shift, epsilon=epsilon, timestep=timestep,
                          update_shift=update_shift, corr_samp=corr_samp, rescale_update=rescale_update,
                          n_discard=n_discard)
         self.max_opt = max_opt

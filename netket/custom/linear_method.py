@@ -2,6 +2,8 @@ import math
 
 import netket as _nk
 
+import netket.optimizer as op
+
 from netket.operator import local_values as _local_values
 from netket.custom import local_values_with_der
 from netket.stats import (
@@ -34,15 +36,17 @@ class LinMethod(Vmc):
         self,
         hamiltonian,
         sampler,
-        optimizer,
         n_samples,
         shift = 1,
         epsilon = 0.5,
+        timestep = 1.0,
         update_shift = True,
         corr_samp = None,
         rescale_update=True,
         n_discard=None,
+        reestimate_shift=True
     ):
+        optimizer = op.Sgd(sampler.machine, learning_rate=1.0)
         super().__init__(hamiltonian, sampler, optimizer, n_samples, n_discard=n_discard)
         self._stab_shift = shift
         self._epsilon = epsilon
@@ -56,6 +60,8 @@ class LinMethod(Vmc):
         self._n_corr_samples = int(self._n_corr_samples_node * self._batch_size * self.n_nodes)
         self.linear_params = np.zeros(len(self.machine.parameters), dtype=bool)
         self.rescale_update = rescale_update
+        self._timestep = timestep
+        self.reestimate_shift = reestimate_shift
 
     def get_lin_method_matrices(self, samples):
         oks = self.machine.der_log(samples)
@@ -118,7 +124,7 @@ class LinMethod(Vmc):
         if _n_nodes > 1:
             _MPI_comm.Bcast(par_change, root=0)
             _MPI_comm.barrier()
-        return par_change
+        return -self._timestep * par_change
 
     def correlated_en_estimation(self, samples, ref_amplitudes, amplitudes):
         ratios = np.exp(2 * (amplitudes-ref_amplitudes).real)
@@ -126,7 +132,13 @@ class LinMethod(Vmc):
         assert(np.isfinite(val))
         return val
 
-    def recalculate_shift(self, H_full, S_full, oks_mean):
+    def en_estimation(self, samples_r, samples):
+        loc = _local_values(self._ham, self.machine, samples_r).reshape(samples.shape[0:2])
+        stat = _statistics(loc)
+        assert(np.isfinite(stat.mean))
+        return stat
+
+    def _linesearch(self, H_full, S_full, oks_mean):
         samples = None
         best_e = None
 
@@ -135,91 +147,103 @@ class LinMethod(Vmc):
         test_shift = self._stab_shift
         count = 0
         valid_result = False
+        init_step = self._timestep
+        init_shift = self._stab_shift
 
         while not valid_result:
             try:
                 dp = self.get_parameter_update(H_full, S_full, oks_mean, test_shift)
-                self.machine.parameters += dp
+                self.machine.parameters -= dp
                 try:
                     self._sampler.generate_samples(self._n_discard)
                     samples = self._sampler.generate_samples(self._n_corr_samples_node)
-                    samples = samples.reshape((-1, samples.shape[-1]))
-                    ref_amplitudes = self.machine.log_val(samples)
-                    amplitudes = ref_amplitudes.copy()
-                    e_new = self.correlated_en_estimation(samples, ref_amplitudes, amplitudes).real
-                    valid_result = True
+                    samples_r = samples.reshape((-1, samples.shape[-1]))
+                    ref_amplitudes = self.machine.log_val(samples_r)
+                    stats = self.en_estimation(samples_r, samples)
+                    # TODO: work out good criterion
+                    if ((stats.mean.real - stats.error_of_mean) < (self._loss_stats.mean.real + self._loss_stats.error_of_mean)) and abs(stats.mean.imag) < 1:
+                        valid_result = True
+                    else:
+                        print(stats, self._loss_stats)
+                        valid_result = False
                 except:
                     valid_result = False
-                self.machine.parameters -= dp
+                self.machine.parameters += dp
             except:
                 valid_result = False
 
             if valid_result:
-                energies.append(e_new)
+                energies.append(stats.mean.real)
                 shifts.append(test_shift)
-                best_e = e_new
+                best_e = stats.mean.real
                 best_shift = test_shift
                 best_dp = dp
             else:
                 test_shift *= 10
+                self._timestep /= 2
             count += 1
-            assert(count < 10)
+            if count >= 20.0:
+                self._stab_shift = init_shift
+                self._timestep = init_step
+                print("recalculate", flush=True)
+                return 0.0
         
-        for shift in (test_shift/10, test_shift * 10):
-            dp = self.get_parameter_update(H_full, S_full, oks_mean, shift)
-            self.machine.parameters += dp
-
-            try:
-                amplitudes = self.machine.log_val(samples)
-                e_new = self.correlated_en_estimation(samples, ref_amplitudes, amplitudes).real
-                valid_result = True
-            except:
-                valid_result = False
-
-            self.machine.parameters -= dp
-
-            if valid_result:
-                energies.append(e_new)
-                shifts.append(shift)
-                if e_new < best_e:
-                    best_e = e_new
-                    best_shift = shift
-                    best_dp = dp
-
-        
-        # parabolic interpolation if central shift gives largest improvement
-        if len(energies) == 3:
-            if energies[0] < energies[1] and energies[0] < energies[2]:
-                interpolation_num = (energies[1] - energies[0]) * (np.log(shifts[2]) - np.log(shifts[0]))**2
-                interpolation_num -= (energies[2] - energies[0]) * (np.log(shifts[0]) - np.log(shifts[1]))**2
-
-                interpolation_denom = (energies[1] - energies[0]) * (np.log(shifts[2]) - np.log(shifts[0]))
-                interpolation_denom += (energies[2] - energies[0]) * (np.log(shifts[0]) - np.log(shifts[1]))
-
-                interpolated_shift = np.exp(np.log(shifts[1]) + 0.5 * interpolation_num/interpolation_denom)
-
-                dp = self.get_parameter_update(H_full, S_full, oks_mean, interpolated_shift)
-
-                self.machine.parameters += dp
-
-                valid_result = False
+        if self.reestimate_shift:
+            for shift in (test_shift/10, test_shift * 10):
+                dp = self.get_parameter_update(H_full, S_full, oks_mean, shift)
+                self.machine.parameters -= dp
 
                 try:
-                    amplitudes = self.machine.log_val(samples)
-                    e_new = self.correlated_en_estimation(samples, ref_amplitudes, amplitudes).real
+                    amplitudes = self.machine.log_val(samples_r)
+                    e_new = self.correlated_en_estimation(samples_r, ref_amplitudes, amplitudes).real
                     valid_result = True
                 except:
                     valid_result = False
 
-                self.machine.parameters -= dp
+                self.machine.parameters += dp
 
                 if valid_result:
+                    energies.append(e_new)
+                    shifts.append(shift)
                     if e_new < best_e:
                         best_e = e_new
-                        best_shift = interpolated_shift
+                        best_shift = shift
                         best_dp = dp
 
+            # parabolic interpolation if central shift gives largest improvement
+            if len(energies) == 3:
+                if energies[0] < energies[1] and energies[0] < energies[2]:
+                    interpolation_num = (energies[1] - energies[0]) * (np.log(shifts[2]) - np.log(shifts[0]))**2
+                    interpolation_num -= (energies[2] - energies[0]) * (np.log(shifts[0]) - np.log(shifts[1]))**2
+
+                    interpolation_denom = (energies[1] - energies[0]) * (np.log(shifts[2]) - np.log(shifts[0]))
+                    interpolation_denom += (energies[2] - energies[0]) * (np.log(shifts[0]) - np.log(shifts[1]))
+
+                    interpolated_shift = np.exp(np.log(shifts[1]) + 0.5 * interpolation_num/interpolation_denom)
+
+                    dp = self.get_parameter_update(H_full, S_full, oks_mean, interpolated_shift)
+
+                    self.machine.parameters -= dp
+
+                    valid_result = False
+
+                    try:
+                        amplitudes = self.machine.log_val(samples)
+                        e_new = self.correlated_en_estimation(samples, ref_amplitudes, amplitudes).real
+                        valid_result = True
+                    except:
+                        valid_result = False
+
+                    self.machine.parameters += dp
+
+                    if valid_result:
+                        if e_new < best_e:
+                            best_e = e_new
+                            best_shift = interpolated_shift
+                            best_dp = dp
+
         self._stab_shift = best_shift
+        self._timestep = init_step
         return best_dp
 
     def _forward_and_backward(self):
@@ -237,9 +261,6 @@ class LinMethod(Vmc):
 
         S_full, H_full, oks_mean, self._loss_stats = self.get_lin_method_matrices(samples_r)
 
-        if self.update_shift:
-            self._dp = self.recalculate_shift(H_full, S_full, oks_mean)
-        else:
-            self._dp = self.get_parameter_update(H_full, S_full, oks_mean, self._stab_shift)
+        self._dp = self._linesearch(H_full, S_full, oks_mean)
 
-        return -self._dp
+        return self._dp
