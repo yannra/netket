@@ -101,22 +101,21 @@ class QGPS(AbstractMachine):
     def init_random_parameters(self, seed=None, sigma=0.1, start_from_uniform=True):
         if self._exp_kern_representation:
             epsilon = _np.zeros(self._epsilon.shape, dtype=self._npdtype)
-
             if _rank == 0:
                 rgen = _np.random.default_rng(seed)
-                epsilon += rgen.normal(scale=sigma, size=epsilon.shape)
                 if self._dtype == complex:
                     epsilon += 1j*rgen.normal(scale=sigma, size=epsilon.shape)
-                if start_from_uniform:
-                    epsilon[1:,:,:] = 0.
+                else:
+                    epsilon += rgen.normal(scale=sigma, size=epsilon.shape)
         else:
             epsilon = _np.ones(self._epsilon.shape, dtype=self._npdtype)
 
             if _rank == 0:
                 rgen = _np.random.default_rng(seed)
-                epsilon += rgen.normal(scale=sigma, size=epsilon.shape)
                 if self._dtype == complex:
-                    epsilon += 1j*rgen.normal(scale=sigma, size=epsilon.shape)
+                    epsilon *= _np.exp(1j*rgen.normal(scale=sigma, size=epsilon.shape))
+                else:
+                    epsilon += rgen.normal(scale=sigma, size=epsilon.shape)
                 if start_from_uniform:
                     epsilon[0,:,:] = 0.0
 
