@@ -22,7 +22,7 @@ hi = nk.hilbert.Spin(s=0.5, total_sz=0.0, N=g.n_nodes)
 
 ha = nk.custom.J1J2(g, J2=J2, msr=True)
 
-transl = nk.custom.get_symms_chain(L)
+transl = nk.custom.get_symms_square_lattice(L)
 
 if mode == 0:
     ma = nk.machine.QGPSSumSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
