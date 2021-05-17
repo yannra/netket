@@ -44,7 +44,7 @@ sa.reset(True)
 # Stochastic Reconfiguration
 sr = nk.optimizer.SR(ma)
 
-samples = 4000
+samples = 5000
 
 # Create the optimization driver
 gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=20, max_opt=4000, check_improvement=False, reset_bias=False)
@@ -73,10 +73,10 @@ for it in gs.iter(2000,1):
                 best_epsilon = ma._epsilon.copy()
                 best_en_upper_bound = gs.energy.mean.real + gs.energy.error_of_mean
                 np.save("best_epsilon.npy", best_epsilon)
-        if it == 1949:
+        if it == 1959:
             best_en_upper_bound = None
     count += 1
-    if count == 50:
+    if count == 40:
         count = 0
         samples += 100
         gs.n_samples = samples
