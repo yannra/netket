@@ -78,7 +78,8 @@ for it in gs.iter(2000,1):
     count += 1
     if count == 50:
         count = 0
-        gs.n_samples = gs.n_samples + 100
+        samples += 100
+        gs.n_samples = samples
 
 mpi.COMM_WORLD.Bcast(best_epsilon, root=0)
 
