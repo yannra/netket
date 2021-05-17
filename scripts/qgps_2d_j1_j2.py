@@ -45,7 +45,7 @@ sa.reset(True)
 # Stochastic Reconfiguration
 sr = nk.optimizer.SR(ma)
 
-samples = 5000
+samples = 5100
 
 # Create the optimization driver
 gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=20, max_opt=4000, check_improvement=False, reset_bias=False)
