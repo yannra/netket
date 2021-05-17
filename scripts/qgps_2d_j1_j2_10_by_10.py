@@ -32,7 +32,7 @@ elif mode == 2:
     ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=None, spin_flip_sym=False, dtype=complex)
 
 ma._exp_kern_representation = False
-ma.init_random_parameters(sigma=0.05, start_from_uniform=False)
+ma.init_random_parameters(sigma=0.02, start_from_uniform=False)
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.02)
