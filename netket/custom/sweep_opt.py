@@ -122,7 +122,8 @@ class SweepOpt(nk.Vmc):
                     self._check_improvement = check_improvement
 
                 if self._reset_bias:
-                    bias = self._sampler._log_values.real.max()
+                    vals = self._sampler._machine.log_val(self._samples.reshape((-1, self._samples.shape[-1])))
+                    bias = vals.real.max()
                     bias_update = _MPI_comm.allreduce(bias, op=MPI.MAX)
                     _MPI_comm.barrier()
                     self._sampler._machine.bias -= bias_update
