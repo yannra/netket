@@ -228,8 +228,8 @@ class LinMethod(Vmc):
                     valid_result = False
 
                     try:
-                        amplitudes = self.machine.log_val(samples)
-                        e_new = self.correlated_en_estimation(samples, ref_amplitudes, amplitudes).real
+                        amplitudes = self.machine.log_val(samples_r)
+                        e_new = self.correlated_en_estimation(samples_r, ref_amplitudes, amplitudes).real
                         valid_result = True
                     except:
                         valid_result = False
