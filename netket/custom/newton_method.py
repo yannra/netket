@@ -173,7 +173,6 @@ class NewtonMethod(Vmc):
                         np.allclose(stats.mean.real, self._loss_stats.mean.real)) and abs(stats.mean.imag) < 1 :
                         valid_result = True
                     else:
-                        print(stats, self._loss_stats)
                         valid_result = False
                 except:
                     valid_result = False
@@ -193,7 +192,6 @@ class NewtonMethod(Vmc):
             count += 1
             if count >= 100:
                 # self._stab_shift = init_shift
-                print("recalculate", flush=True)
                 return 0.0
         
         if self.reestimate_shift:
