@@ -781,6 +781,31 @@ class QGPSProdSym(QGPS):
                          automorphisms=automorphisms, spin_flip_sym=spin_flip_sym,
                          cluster_ids=cluster_ids, dtype=dtype)
 
+    def hess(self, x, out=None):
+        r"""Computes the hessian of the logarithm of the wavefunction for a
+        batch of visible configurations `x` and stores the result into `out`.
+
+        Args:
+            x: A matrix of `float64` of shape `(*, self.n_visible)`.
+            out: Destination tensor of `complex128`.
+                `out` should be a matrix of shape `(v.shape[0], self.n_par)`.
+
+        Returns:
+            `out`
+        """
+        if self._ref_conf is None or not self._fast_update:
+            if len(x.shape) > 1:
+                self._ref_conf = x[0,:].copy()
+            else:
+                self._ref_conf = x.copy()
+            if self._exp_kern_representation:
+                self._compute_site_prod_exp_form(self._ref_conf, self._site_product, self._epsilon, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign)
+            else:
+                self._compute_site_prod_std_form(self._ref_conf, self._site_product, self._epsilon, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign)
+        assert(not self._exp_kern_representation)
+        hess = self._hess_std_form(x, out,  self._ref_conf, self._site_product, self._epsilon, self._npar, self._Smap, self._Smap_inverse, self._sym_spin_flip_sign, self._der_ids, self.bias)
+        return hess
+
     @staticmethod
     @jit(nopython=True)
     def _log_val_kernel_exp_form(x, out, ref_conf, site_product, epsilon, Smap, Smap_inverse, sym_spin_flip_sign, bias):
@@ -969,6 +994,83 @@ class QGPSProdSym(QGPS):
                                             else:
                                                 der *= epsilon[j, w, 1]
                                     out[b, der_ids[i, w, 1]] += der
+        return out
+
+
+    @staticmethod
+    @jit(nopython=True)
+    def _hess_std_form(x, out, ref_conf, site_product, epsilon, npar, Smap, Smap_inverse, sym_spin_flip_sign, der_ids, bias):
+        batch_size = x.shape[0]
+        eps = _np.finfo(_np.double).eps
+
+        if out is None:
+            out = _np.empty((batch_size, npar, npar), dtype=_np.complex128)
+
+        out.fill(0.0)
+
+        for b in range(batch_size):
+            # update site product
+            recompute = False
+            for pos in range(x.shape[1]):
+                if x[b, pos] != ref_conf[pos]:
+                    for t in range(Smap.shape[0]):
+                        if recompute:
+                            break
+                        i = Smap_inverse[t, pos]
+                        if i != -1:
+                            for w in range(epsilon.shape[1]):
+                                # TODO: careful about 0 values -> better implementation
+                                if sym_spin_flip_sign[t] * x[b, pos] < 0:
+                                    if abs(epsilon[i, w, 1]) > 1.e4 * eps:
+                                        site_product[w, t] *= (epsilon[i, w, 0]/epsilon[i, w, 1])
+                                    else:
+                                        recompute = True
+                                else:
+                                    if abs(epsilon[i, w, 0]) > 1.e4 * eps:
+                                        site_product[w, t] *= (epsilon[i, w, 1]/epsilon[i, w, 0])
+                                    else:
+                                        recompute = True
+                                if recompute:
+                                    break
+                ref_conf[pos] = x[b, pos]
+            if recompute:
+                for t in range(Smap.shape[0]):
+                    for w in range(epsilon.shape[1]):
+                        site_product[w, t] = _np.complex128(1.0)
+                        for i in range(Smap.shape[1]):
+                            if sym_spin_flip_sign[t] * ref_conf[Smap[t,i]] < 0:
+                                site_product[w, t] *= epsilon[i, w, 0]
+                            else:
+                                site_product[w, t] *= epsilon[i, w, 1]
+
+
+            for t in range(Smap.shape[0]):
+                for i in range(Smap.shape[1]):
+                    if sym_spin_flip_sign[t] * x[b, Smap[t,i]] < 0:
+                        target_id_i = 0
+                    else:
+                        target_id_i = 1
+                    for w in range(epsilon.shape[1]):
+                        if der_ids[i, w, target_id_i] >= 0:
+                            for i_tilde in range(Smap.shape[1]):
+                                if i != i_tilde:
+                                    if sym_spin_flip_sign[t] * x[b, Smap[t,i_tilde]] < 0:
+                                        target_id_i_tilde = 0
+                                    else:
+                                        target_id_i_tilde = 1
+                                    if der_ids[i_tilde, w, target_id_i_tilde] >= 0:
+                                        if _np.abs(epsilon[i_tilde, w, target_id_i_tilde]) > 1.e6*eps and _np.abs(epsilon[i, w, target_id_i]) > 1.e6*eps:
+                                            hess_term = site_product[w,t]/(epsilon[i, w, target_id_i] * epsilon[i_tilde, w, target_id_i_tilde])
+                                        else:
+                                            hess_term = _np.complex128(1.0)
+                                            for j in range(Smap.shape[1]):
+                                                if j != i_tilde and j != i:
+                                                    if sym_spin_flip_sign[t] * x[b, Smap[t,j]] < 0:
+                                                        hess_term *= epsilon[j, w, 0]
+                                                    else:
+                                                        hess_term *= epsilon[j, w, 1]
+                                        out[b, der_ids[i, w, target_id_i], der_ids[i_tilde, w, target_id_i_tilde]] += hess_term
+
         return out
 
 
