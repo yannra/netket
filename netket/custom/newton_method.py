@@ -227,8 +227,6 @@ class NewtonMethod(Vmc):
 
                     interpolated_shift = ((shifts[1]) + 0.5 * interpolation_num/interpolation_denom)
 
-                    print(test_shift, interpolated_shift, flush=True)
-
                     dp = self.get_parameter_update(hessian, grad, S, interpolated_shift)
 
                     self.machine.parameters -= dp
@@ -245,7 +243,6 @@ class NewtonMethod(Vmc):
                     self.machine.parameters += dp
 
                     if valid_result:
-                        print("success", e_new, best_e,  flush=True)
                         if e_new < best_e:
                             best_e = e_new
                             best_shift = interpolated_shift
