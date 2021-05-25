@@ -31,6 +31,8 @@ elif mode == 1:
     ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
 elif mode == 2:
     ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=None, spin_flip_sym=False, dtype=complex)
+elif mode == 3:
+    ma = nk.machine.QGPSLinExp(hi, n_bond_exp=0, n_bond_lin=N, automorphisms=None, spin_flip_sym=False, dtype=complex)
 
 ma.init_random_parameters(sigma=0.02, start_from_uniform=False)
 
@@ -89,7 +91,7 @@ ma._epsilon = best_epsilon
 ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
 ma.reset()
 
-est = nk.variational.estimate_expectations(ha, sa, 100000//mpi.COMM_WORLD.size, n_discard=200)
+est = nk.variational.estimate_expectations(ha, sa, 10000000//mpi.COMM_WORLD.size, n_discard=200)
 
 if mpi.COMM_WORLD.Get_rank() == 0:
     with open("result.txt", "a") as fl:
