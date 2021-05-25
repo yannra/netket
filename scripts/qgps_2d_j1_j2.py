@@ -9,7 +9,6 @@ N = int(sys.argv[1])
 L = int(sys.argv[2])
 mode = int(sys.argv[3])
 J2 = float(sys.argv[4])
-marshall_sign_rule = bool(int(sys.argv[5]))
 
 rank = mpi.COMM_WORLD.Get_rank()
 
@@ -22,7 +21,7 @@ g = nk.graph.Hypercube(length=L, n_dim=2, pbc=True)
 # Spin based Hilbert Space
 hi = nk.hilbert.Spin(s=0.5, total_sz=0.0, N=g.n_nodes)
 
-ha = nk.custom.J1J2(g, J2=J2, msr=marshall_sign_rule)
+ha = nk.custom.J1J2(g, J2=J2, msr=True)
 
 transl = nk.custom.get_symms_square_lattice(L)
 
