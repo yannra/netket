@@ -55,7 +55,7 @@ for i, N in enumerate([1,3]):
             sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=L,n_chains=1)
             sa.reset(True)
 
-            est = nk.variational.estimate_expectations(ha, sa, 1000000//mpi.COMM_WORLD.size, n_discard=200)
+            est = nk.variational.estimate_expectations(ha, sa, 10000000//mpi.COMM_WORLD.size, n_discard=200)
 
             if rank == 0:
                 with open("result_QGPS_N_{}.txt".format(N), "a") as fl:
