@@ -10,7 +10,7 @@ import glob
 from pathlib import Path
 home = str(Path.home())
 
-mode = 1
+mode = 3
 msr = True
 
 rank = mpi.COMM_WORLD.Get_rank()
@@ -43,6 +43,8 @@ for i, N in enumerate([1,3]):
                 ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
             elif mode == 2:
                 ma = nk.machine.QGPSProdSym(hi, n_bond=N, automorphisms=None, spin_flip_sym=False, dtype=complex)
+            elif mode == 3:
+                ma = nk.machine.QGPSLinExp(hi, n_bond_exp=0, n_bond_lin=N, automorphisms=transl, spin_flip_sym=True, dtype=complex)
 
             ma.init_random_parameters(sigma=0.02, start_from_uniform=False)
 
