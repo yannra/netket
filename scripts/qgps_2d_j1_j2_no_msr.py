@@ -37,7 +37,12 @@ ma._exp_kern_representation = False
 if L > 8 and N > 10:
     ma.init_random_parameters(sigma=0.01, start_from_uniform=False)
 else:
-    ma.init_random_parameters(sigma=0.02, start_from_uniform=False)
+    if mode == 0:
+        ma.init_random_parameters(sigma=0.02, start_from_uniform=False)
+        ma._epsilon[0, :, :] = abs(ma._epsilon[0,:,:]) * -1.
+        ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
+    else:
+        ma.init_random_parameters(sigma=0.1, start_from_uniform=False)
 
 
 # Optimizer
@@ -50,10 +55,10 @@ sa.reset(True)
 # Stochastic Reconfiguration
 sr = nk.optimizer.SR(ma)
 
-samples = 5100
+samples = 10000
 
 # Create the optimization driver
-gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=20, max_opt=4000, check_improvement=False, reset_bias=False)
+gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50, max_opt=4000, check_improvement=False, reset_bias=False)
 
 best_epsilon = ma._epsilon.copy()
 best_en_upper_bound = None
@@ -82,10 +87,10 @@ for it in gs.iter(2000,1):
         if it == 1959:
             best_en_upper_bound = None
     count += 1
-    if count == 40:
-        count = 0
-        samples += 100
-        gs.n_samples = samples
+    # if count == 40:
+    #     count = 0
+    #     samples += 100
+    #     gs.n_samples = samples
 
 
 mpi.COMM_WORLD.Bcast(best_epsilon, root=0)
