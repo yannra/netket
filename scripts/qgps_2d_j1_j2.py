@@ -53,7 +53,7 @@ sr = nk.optimizer.SR(ma)
 samples = 5100
 
 # Create the optimization driver
-gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=20, max_opt=4000, check_improvement=False, reset_bias=False)
+gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=20, max_opt=6400, check_improvement=False, reset_bias=False)
 
 best_epsilon = ma._epsilon.copy()
 best_en_upper_bound = None
