@@ -34,23 +34,29 @@ elif mode == 2:
 
 ma._exp_kern_representation = False
 
-if L > 8 and N > 10:
-    ma.init_random_parameters(sigma=0.01, start_from_uniform=False)
-else:
-    if mode == 0:
-        ma.init_random_parameters(sigma=0.02, start_from_uniform=False)
-        ma._epsilon[0, :, :] = abs(ma._epsilon[0,:,:]) * -1.
-        ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
-    else:
-        ma.init_random_parameters(sigma=0.1, start_from_uniform=False)
+# Sampler
+sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2*L,n_chains=1)
+sa.reset(True)
 
+error = 1
+while error > 0:
+    sa.reset(True)
+    if mode == 0:
+        ma.init_random_parameters(sigma=0.2, start_from_uniform=False)
+    else:
+        ma.init_random_parameters(sigma=0.02, start_from_uniform=False)
+    try:
+        est = nk.variational.estimate_expectations(ha, sa, 10000//mpi.COMM_WORLD.size, n_discard=200)
+        err = 0
+    except:
+        print("calc failed, reinitialisation", flush = True)
+        err = 1
+    error = mpi.COMM_WORLD.allreduce(err)
+    mpi.COMM_WORLD.barrier()
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.02)
 
-# Sampler
-sa = nk.sampler.MetropolisExchange(machine=ma,graph=g,d_max=2*L,n_chains=1)
-sa.reset(True)
 
 # Stochastic Reconfiguration
 sr = nk.optimizer.SR(ma)
@@ -58,7 +64,7 @@ sr = nk.optimizer.SR(ma)
 samples = 10000
 
 # Create the optimization driver
-gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50, max_opt=4000, check_improvement=False, reset_bias=False)
+gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50, max_opt=6400, check_improvement=False, reset_bias=False)
 
 best_epsilon = ma._epsilon.copy()
 best_en_upper_bound = None
