@@ -84,6 +84,11 @@ if rank == 0:
     with open("out.txt", "w") as fl:
         fl.write("")
 
+est = nk.variational.estimate_expectations(ha, sa, 5000//mpi.COMM_WORLD.size, n_discard=200)
+
+if rank == 0:
+    print("Init calc:", est.mean, flush=True)
+
 count = 0
 total_count = 0
 for i in range(opt_process.shape[0]-2):
