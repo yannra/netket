@@ -26,6 +26,8 @@ if rank == 0:
     shutil.copyfile("OLD_epsilon.npy", "epsilon.npy")
     shutil.copyfile("OLD_epsilon_old.npy", "epsilon_old.npy")
 
+mpi.COMM_WORLD.barrier()
+
 opt_process = np.genfromtxt("OLD_out.txt")
 
 
