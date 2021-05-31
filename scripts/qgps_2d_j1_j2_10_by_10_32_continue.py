@@ -23,8 +23,11 @@ if rank == 0:
         d = os.path.join("", "OLD_"+item)
         if not os.path.isdir(s):
             shutil.copy2(s, d)
+    shutil.copyfile("OLD_epsilon.npy", "epsilon.npy")
+    shutil.copyfile("OLD_epsilon_old.npy", "epsilon_old.npy")
 
 opt_process = np.genfromtxt("OLD_out.txt")
+
 
 g = nk.graph.Hypercube(length=L, n_dim=2, pbc=True)
 
