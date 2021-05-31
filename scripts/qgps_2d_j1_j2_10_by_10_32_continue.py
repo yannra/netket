@@ -68,12 +68,15 @@ samples = 5100
 # Create the optimization driver
 gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=20, max_opt=6400, check_improvement=False, reset_bias=False)
 
-eps = np.load("OLD_epsilon.npy")
+eps = np.load("OLD_epsilon_old.npy")
 ma._epsilon = eps.copy()
 ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
-
+ma.reset()
 
 best_epsilon = ma._epsilon.copy()
+
+np.save("epsilon.npy", ma._epsilon)
+np.save("epsilon_old.npy", ma._epsilon)
 
 best_en_upper_bound = min(opt_process[:,0] + opt_process[:,2])
 
@@ -83,7 +86,7 @@ if rank == 0:
 
 count = 0
 total_count = 0
-for i in range(opt_process.shape[0]-1):
+for i in range(opt_process.shape[0]-2):
     if mpi.COMM_WORLD.Get_rank() == 0:
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(opt_process[i,0], opt_process[i,1], opt_process[i,2]))
