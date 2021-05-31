@@ -98,7 +98,7 @@ for i in range(opt_process.shape[0]-1):
 
 for it in gs.iter(2000 - total_count,1):
     if mpi.COMM_WORLD.Get_rank() == 0:
-        if iter >= 1:
+        if it >= 1:
             move("epsilon.npy", "epsilon_old.npy")
             np.save("epsilon.npy", ma._epsilon)
         print(it+total_count,gs.energy, flush=True)
