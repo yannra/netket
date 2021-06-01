@@ -41,10 +41,7 @@ sa.reset(True)
 error = 1
 while error > 0:
     sa.reset(True)
-    if mode == 0:
-        ma.init_random_parameters(sigma=0.2, start_from_uniform=False)
-    else:
-        ma.init_random_parameters(sigma=0.02, start_from_uniform=False)
+    ma.init_random_parameters(sigma=0.1, start_from_uniform=False, small_arg=True)
     try:
         est = nk.variational.estimate_expectations(ha, sa, 10000//mpi.COMM_WORLD.size, n_discard=200)
         err = 0

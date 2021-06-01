@@ -98,7 +98,7 @@ class QGPS(AbstractMachine):
         r"""The number of variational parameters in the machine."""
         return self._opt_params.size
     
-    def init_random_parameters(self, seed=None, sigma=0.1, start_from_uniform=True):
+    def init_random_parameters(self, seed=None, sigma=0.1, start_from_uniform=True, small_arg=False):
         if self._exp_kern_representation:
             epsilon = _np.zeros(self._epsilon.shape, dtype=self._npdtype)
             if _rank == 0:
@@ -118,6 +118,8 @@ class QGPS(AbstractMachine):
                     epsilon += rgen.normal(scale=sigma, size=epsilon.shape)
                 if start_from_uniform:
                     epsilon[0,:,:] = 0.0
+                elif small_arg:
+                    epsilon[0,:,:] *= rgen.normal(scale=sigma, size=epsilon[0,:,:].shape)
 
         if _n_nodes > 1:
             _MPI_comm.Bcast(epsilon, root=0)
