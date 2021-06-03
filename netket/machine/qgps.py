@@ -227,7 +227,6 @@ class QGPS(AbstractMachine):
                         innerprod += epsilon[i, w, 0]
                     else:
                         innerprod += epsilon[i, w, 1]
-                    print(innerprod, epsilon[i, w, 0], epsilon[i, w, 1])
                 site_product[w, t] = innerprod
 
     @property
