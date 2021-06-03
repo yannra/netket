@@ -40,11 +40,11 @@ sa.reset(True)
 
 error = 1
 while error > 0:
-    sa.reset(True)
     if mode == 1:
-        ma.init_random_parameters(sigma=0.01, start_from_uniform=False, small_arg=True)
+        ma.init_random_parameters(sigma=0.02, start_from_uniform=False, small_arg=True)
     else:
-        ma.init_random_parameters(sigma=10, start_from_uniform=False, small_arg=False)
+        ma.init_random_parameters(sigma=2.0, start_from_uniform=False, small_arg=True)
+    sa.reset(True)
     try:
         est = nk.variational.estimate_expectations(ha, sa, 10000//mpi.COMM_WORLD.size, n_discard=200)
         err = 0
@@ -55,7 +55,7 @@ while error > 0:
     mpi.COMM_WORLD.barrier()
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.02)
+op = nk.optimizer.Sgd(ma, learning_rate=0.01)
 
 
 # Stochastic Reconfiguration
@@ -64,7 +64,7 @@ sr = nk.optimizer.SR(ma)
 samples = 10000
 
 # Create the optimization driver
-gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=50, max_opt=6400, check_improvement=False, reset_bias=False)
+gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=100, max_opt=6400, check_improvement=False, reset_bias=False)
 
 best_epsilon = ma._epsilon.copy()
 best_en_upper_bound = None
