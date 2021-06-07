@@ -43,7 +43,7 @@ while error > 0:
     if mode == 1:
         ma.init_random_parameters(sigma=0.02, start_from_uniform=False, small_arg=True)
     else:
-        ma.init_random_parameters(sigma=2.0, start_from_uniform=False, small_arg=True)
+        ma.init_random_parameters(sigma=0.05, start_from_uniform=False, small_arg=False)
     sa.reset(True)
     try:
         est = nk.variational.estimate_expectations(ha, sa, 10000//mpi.COMM_WORLD.size, n_discard=200)
@@ -55,16 +55,16 @@ while error > 0:
     mpi.COMM_WORLD.barrier()
 
 # Optimizer
-op = nk.optimizer.Sgd(ma, learning_rate=0.01)
+op = nk.optimizer.Sgd(ma, learning_rate=0.02)
 
 
 # Stochastic Reconfiguration
-sr = nk.optimizer.SR(ma)
+sr = nk.optimizer.SR(ma, diag_shift=0.02)
 
-samples = 10000
+samples = 5100
 
 # Create the optimization driver
-gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=100, max_opt=6400, check_improvement=False, reset_bias=False)
+gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=20, max_opt=6400, check_improvement=False, reset_bias=True)
 
 best_epsilon = ma._epsilon.copy()
 best_en_upper_bound = None
@@ -93,10 +93,10 @@ for it in gs.iter(2000,1):
         if it == 1959:
             best_en_upper_bound = None
     count += 1
-    # if count == 40:
-    #     count = 0
-    #     samples += 100
-    #     gs.n_samples = samples
+    if count == 40:
+        count = 0
+        samples += 100
+        gs.n_samples = samples
 
 
 mpi.COMM_WORLD.Bcast(best_epsilon, root=0)
