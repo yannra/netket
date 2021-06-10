@@ -65,7 +65,7 @@ if mpi.COMM_WORLD.Get_rank() == 0:
     np.save("best_epsilon.npy", best_epsilon)
 
 count = 0
-for it in gs.iter(2000,1):
+for it in gs.iter(3000,1):
     if mpi.COMM_WORLD.Get_rank() == 0:
         move("epsilon.npy", "epsilon_old.npy")
         np.save("epsilon.npy", ma._epsilon)
@@ -85,6 +85,7 @@ for it in gs.iter(2000,1):
     if count == 40:
         count = 0
         samples += 100
+        sr._diag_shift *= 0.97
         gs.n_samples = samples
 
 
