@@ -1,20 +1,35 @@
 import numpy as np
 import netket as nk
 import sys
+import shutil
 from shutil import move
 import mpi4py.MPI as mpi
 import symmetries
+import os
 
-N = int(sys.argv[1])
-L = int(sys.argv[2])
-mode = int(sys.argv[3])
-J2 = float(sys.argv[4])
+
+N = 32
+L = 10
+mode = 1
+J2 = 0.0
 
 rank = mpi.COMM_WORLD.Get_rank()
 
+initial_folder = "/users/k1802890/lustre/J1_J2_2D_10_by_10_J2_0.0_prod_sym_N_32_large_sample_13337126"
+
 if rank == 0:
-    with open("result.txt", "w") as fl:
-        fl.write("L, N, energy (real), energy (imag), energy_error\n")
+    for item in os.listdir(initial_folder):
+        s = os.path.join(initial_folder, item)
+        d = os.path.join("", "OLD_"+item)
+        if not os.path.isdir(s):
+            shutil.copy2(s, d)
+    shutil.copyfile("OLD_epsilon.npy", "epsilon.npy")
+    shutil.copyfile("OLD_epsilon_old.npy", "epsilon_old.npy")
+
+mpi.COMM_WORLD.barrier()
+
+opt_process = np.genfromtxt("OLD_out.txt")
+
 
 g = nk.graph.Hypercube(length=L, n_dim=2, pbc=True)
 
@@ -55,21 +70,49 @@ samples = 10100
 # Create the optimization driver
 gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=20, max_opt=6400, check_improvement=False, reset_bias=False)
 
-best_epsilon = ma._epsilon.copy()
-best_en_upper_bound = None
+eps = np.load("OLD_epsilon_old.npy")
+ma._epsilon = eps.copy()
+ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
+ma.reset()
 
-if mpi.COMM_WORLD.Get_rank() == 0:
+best_epsilon = ma._epsilon.copy()
+
+np.save("epsilon.npy", ma._epsilon)
+np.save("epsilon_old.npy", ma._epsilon)
+
+best_en_upper_bound = min(opt_process[:,0] + opt_process[:,2])
+
+if rank == 0:
     with open("out.txt", "w") as fl:
         fl.write("")
-    np.save("epsilon.npy", ma._epsilon)
-    np.save("best_epsilon.npy", best_epsilon)
+
+est = nk.variational.estimate_expectations(ha, sa, 10000//mpi.COMM_WORLD.size, n_discard=200)
+
+if rank == 0:
+    print("Init calc:", est.mean, flush=True)
 
 count = 0
-for it in gs.iter(3000,1):
+total_count = 0
+for i in range(opt_process.shape[0]-2):
     if mpi.COMM_WORLD.Get_rank() == 0:
-        move("epsilon.npy", "epsilon_old.npy")
-        np.save("epsilon.npy", ma._epsilon)
-        print(it,gs.energy, flush=True)
+        with open("out.txt", "a") as fl:
+            fl.write("{}  {}  {}\n".format(opt_process[i,0], opt_process[i,1], opt_process[i,2]))
+        if i == 2959:
+            best_en_upper_bound = None
+    count += 1
+    total_count += 1
+    if count == 40:
+        count = 0
+        samples += 100
+        sr._diag_shift *= 0.97
+        gs.n_samples = samples
+
+for it in gs.iter(3000 - total_count,1):
+    if mpi.COMM_WORLD.Get_rank() == 0:
+        if it >= 1:
+            move("epsilon.npy", "epsilon_old.npy")
+            np.save("epsilon.npy", ma._epsilon)
+        print(it+total_count,gs.energy, flush=True)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
         if best_en_upper_bound is None:
@@ -79,7 +122,7 @@ for it in gs.iter(3000,1):
                 best_epsilon = ma._epsilon.copy()
                 best_en_upper_bound = gs.energy.mean.real + gs.energy.error_of_mean
                 np.save("best_epsilon.npy", best_epsilon)
-        if it == 2959:
+        if it+total_count == 2959:
             best_en_upper_bound = None
     count += 1
     if count == 40:
