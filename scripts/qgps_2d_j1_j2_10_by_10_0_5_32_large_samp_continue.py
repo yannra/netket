@@ -54,6 +54,7 @@ if L > 8 and N > 10:
 else:
     ma.init_random_parameters(sigma=0.02, start_from_uniform=False)
 
+ma.bias = -100.
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.02)
