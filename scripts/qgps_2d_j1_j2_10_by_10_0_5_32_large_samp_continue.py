@@ -54,7 +54,7 @@ if L > 8 and N > 10:
 else:
     ma.init_random_parameters(sigma=0.02, start_from_uniform=False)
 
-ma.bias = -100.
+ma.bias = -3950.
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.02)
@@ -86,6 +86,8 @@ best_en_upper_bound = min(opt_process[:,0] + opt_process[:,2])
 if rank == 0:
     with open("out.txt", "w") as fl:
         fl.write("")
+    with open("bias.txt", "w") as fl:
+        fl.write("")
 
 est = nk.variational.estimate_expectations(ha, sa, 10000//mpi.COMM_WORLD.size, n_discard=200)
 
@@ -98,6 +100,8 @@ for i in range(opt_process.shape[0]-2):
     if mpi.COMM_WORLD.Get_rank() == 0:
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(opt_process[i,0], opt_process[i,1], opt_process[i,2]))
+        with open("bias.txt", "a") as fl:
+            fl.write("{} {}\n".format(ma.bias.real, ma.bias.imag))
         if i == 2959:
             best_en_upper_bound = None
     count += 1
@@ -116,6 +120,8 @@ for it in gs.iter(3000 - total_count,1):
         print(it+total_count,gs.energy, flush=True)
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(np.real(gs.energy.mean), np.imag(gs.energy.mean), gs.energy.error_of_mean))
+        with open("bias.txt", "a") as fl:
+            fl.write("{} {}\n".format(ma.bias.real, ma.bias.imag))
         if best_en_upper_bound is None:
             best_en_upper_bound = gs.energy.mean.real + gs.energy.error_of_mean
         else:
