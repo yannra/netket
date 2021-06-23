@@ -15,20 +15,20 @@ J2 = 0.0
 
 rank = mpi.COMM_WORLD.Get_rank()
 
-initial_folder = "/users/k1802890/lustre/J1_J2_2D_10_by_10_J2_0.0_prod_sym_N_32_large_sample_13337126"
+initial_folder = "/users/k1802890/lustre/J1_J2_2D_10_by_10_J2_0.0_prod_sym_N_32_large_sample_continue_13378678"
 
 if rank == 0:
     for item in os.listdir(initial_folder):
         s = os.path.join(initial_folder, item)
-        d = os.path.join("", "OLD_"+item)
+        d = os.path.join("", "OLD_NEW_"+item)
         if not os.path.isdir(s):
             shutil.copy2(s, d)
-    shutil.copyfile("OLD_epsilon.npy", "epsilon.npy")
-    shutil.copyfile("OLD_epsilon_old.npy", "epsilon_old.npy")
+    shutil.copyfile("OLD_NEW_epsilon.npy", "epsilon.npy")
+    shutil.copyfile("OLD_NEW_epsilon_old.npy", "epsilon_old.npy")
 
 mpi.COMM_WORLD.barrier()
 
-opt_process = np.genfromtxt("OLD_out.txt")
+opt_process = np.genfromtxt("OLD_NEW_out.txt")
 
 
 g = nk.graph.Hypercube(length=L, n_dim=2, pbc=True)
@@ -70,7 +70,7 @@ samples = 10100
 # Create the optimization driver
 gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=20, max_opt=6400, check_improvement=False, reset_bias=False)
 
-eps = np.load("OLD_epsilon_old.npy")
+eps = np.load("OLD_NEW_epsilon_old.npy")
 ma._epsilon = eps.copy()
 ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
 ma.reset()
