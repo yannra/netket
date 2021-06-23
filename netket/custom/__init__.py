@@ -6,3 +6,4 @@ from .newton_method import NewtonMethod
 from .stabilised_sr import SRStab
 from .stabilised_lin_method import LinMethodStab
 from .sweep_opt import SweepOpt, SweepOptLinMethod, SweepOptStabSR, SweepOptStabLinMethod
+from .timeevolvedstate import TimeEvolvedState
