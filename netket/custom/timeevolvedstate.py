@@ -4,9 +4,9 @@ from numba import jit
 
 
 class TimeEvolvedState(machine.AbstractMachine):
-    def __init__(self, QGPSAnsatz, hamiltonian, beta=1., order=1):
-        super().__init__(QGPSAnsatz.hilbert, dtype=QGPSAnsatz.dtype)
-        self.QGPS = QGPSAnsatz
+    def __init__(self, machine, hamiltonian, beta=1., order=1):
+        super().__init__(machine.hilbert, dtype=machine.dtype)
+        self.machine = machine
         self.ha = hamiltonian
         self.beta = beta
         self.order = order
@@ -26,14 +26,14 @@ class TimeEvolvedState(machine.AbstractMachine):
 
         sections = [np.array(range(1,x.shape[0]+1), dtype=np.int32)]
         x_primes = np.asarray(x)
-        log_val_primes = [self.QGPS.log_val(x_primes)]
+        log_val_primes = [self.machine.log_val(x_primes)]
         mels = [np.ones(x.shape[0], dtype=np.float)]
 
         for j in range(self.order):
             sections.append(np.empty(x_primes.shape[0], dtype=np.int32))
             x_primes, mels_new = self.ha.get_conn_flattened(x_primes, sections[-1])
             mels.append(mels_new)
-            log_val_primes.append(self.QGPS.log_val(x_primes))
+            log_val_primes.append(self.machine.log_val(x_primes))
  
         for j in range(self.order+1):
             if j != 0:
@@ -46,10 +46,6 @@ class TimeEvolvedState(machine.AbstractMachine):
             for k in range(j-1, 0, -1):
                 arg_new = np.ones(log_val_primes[k-1].size, dtype=np.complex128)
                 arg_new = self.contract_inner_sum((arg * mels[k]), sections[k], arg_new)
-                bottom_lim = 0
-                for l in range(arg_new.size):
-                    arg_new[l] *= np.sum((arg * mels[k])[bottom_lim:sections[k][l]])
-                    bottom_lim = sections[k][l]
                 arg = arg_new
 
             out += ((-self.beta)**j/np.math.factorial(j)) * arg
@@ -70,4 +66,4 @@ class TimeEvolvedState(machine.AbstractMachine):
 
     @property
     def state_dict(self):
-        return self.QGPS.state_dict
+        return self.machine.state_dict
