@@ -15,20 +15,21 @@ J2 = 0.5
 
 rank = mpi.COMM_WORLD.Get_rank()
 
-initial_folder = "/home/mmm0475/Scratch/J1_J2_2D_10_by_10_J2_0.5_sum_sym_N_32_large_sample_with_bias_345550"
+initial_folder = "/home/mmm0475/Scratch/J1_J2_2D_10_by_10_J2_0.5_sum_sym_N_32_large_sample_with_bias_continue_350216"
 
 if rank == 0:
     for item in os.listdir(initial_folder):
         s = os.path.join(initial_folder, item)
-        d = os.path.join("", "OLD_"+item)
+        d = os.path.join("", "OLD_NEW_"+item)
         if not os.path.isdir(s):
             shutil.copy2(s, d)
-    shutil.copyfile("OLD_epsilon.npy", "epsilon.npy")
-    shutil.copyfile("OLD_epsilon_old.npy", "epsilon_old.npy")
+    shutil.copyfile("OLD_NEW_epsilon.npy", "epsilon.npy")
+    shutil.copyfile("OLD_NEW_epsilon_old.npy", "epsilon_old.npy")
 
 mpi.COMM_WORLD.barrier()
 
-opt_process = np.genfromtxt("OLD_out.txt")
+opt_process = np.genfromtxt("OLD_NEW_out.txt")
+opt_bias = np.genfromtxt("OLD_NEW_bias.txt")
 
 
 g = nk.graph.Hypercube(length=L, n_dim=2, pbc=True)
@@ -54,7 +55,7 @@ if L > 8 and N > 10:
 else:
     ma.init_random_parameters(sigma=0.02, start_from_uniform=False)
 
-ma.bias = -3950.
+ma.bias = opt_bias[-1,0]
 
 # Optimizer
 op = nk.optimizer.Sgd(ma, learning_rate=0.02)
@@ -101,7 +102,7 @@ for i in range(opt_process.shape[0]-2):
         with open("out.txt", "a") as fl:
             fl.write("{}  {}  {}\n".format(opt_process[i,0], opt_process[i,1], opt_process[i,2]))
         with open("bias.txt", "a") as fl:
-            fl.write("{} {}\n".format(ma.bias.real, ma.bias.imag))
+            fl.write("{} {}\n".format(opt_bias[i,0], opt_bias[i,1]))
         if i == 2959:
             best_en_upper_bound = None
     count += 1
