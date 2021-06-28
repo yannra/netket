@@ -72,7 +72,7 @@ samples = 10100
 # Create the optimization driver
 gs = nk.custom.SweepOpt(hamiltonian=ha, sampler=sa, optimizer=op, n_samples=samples, sr=sr, n_discard=20, max_opt=6400, check_improvement=False, reset_bias=True)
 
-eps = np.load("OLD_epsilon_old.npy")
+eps = np.load("OLD_NEW_epsilon_old.npy")
 ma._epsilon = eps.copy()
 ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
 ma.reset()
