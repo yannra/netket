@@ -15,7 +15,7 @@ J2 = 0.0
 
 rank = mpi.COMM_WORLD.Get_rank()
 
-initial_folder = "/users/k1802890/lustre/J1_J2_2D_10_by_10_J2_0.0_prod_sym_N_32_large_sample_continue_13378678"
+initial_folder = "/users/k1802890/lustre/J1_J2_2D_10_by_10_J2_0.0_prod_sym_N_32_large_sample_continue2_13463321"
 
 if rank == 0:
     for item in os.listdir(initial_folder):
