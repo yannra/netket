@@ -91,9 +91,9 @@ class SupervisedLearning():
 
     def get_bias(self, target_amplitudes, weightings=None, dtype=complex):
         if weightings is None:
-            return np.mean(np.log(target_amplitudes))
+            return _mean(np.log(target_amplitudes))
         else:
-            return np.sum(np.log(target_amplitudes)*weightings)/np.sum(weightings)
+            return _MPI_comm.allreduce(np.sum(np.log(target_amplitudes)*weightings))/_MPI_comm.allreduce(np.sum(weightings))
 
 class QGPSLearning(SupervisedLearning):
     def __init__(self, machine):
