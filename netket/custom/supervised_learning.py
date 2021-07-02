@@ -1,13 +1,25 @@
 import numpy as np
-from numba import njit, prange
+from numba import njit
 import scipy as sp
+
+from netket.stats import (
+    statistics as _statistics,
+    mean as _mean,
+    sum_inplace as _sum_inplace,
+)
+
+from netket.utils import (
+    MPI_comm as _MPI_comm,
+    n_nodes as _n_nodes,
+    node_number as _rank
+)
 
 class SupervisedLearning():
     def __init__(self, machine):
         self.machine = machine
     
     def mean_squared_error(self, basis, target_amplitudes, weightings):
-        return np.sum(weightings * abs(np.exp(self.machine.log_val(basis)) - target_amplitudes)**2)
+        return _MPI_comm.allreduce(np.sum(weightings * abs(np.exp(self.machine.log_val(basis)) - target_amplitudes)**2))
 
     def mean_squared_error_der(self, basis, target_amplitudes, weightings):
         estimates = np.exp(self.machine.log_val(basis))
@@ -16,7 +28,7 @@ class SupervisedLearning():
         der = 2 * np.einsum("ij,i,i->j", der_log, estimates, residuals)
         if self.machine.has_complex_parameters:
             der = np.concatenate((der, 1.j*der))
-        return der.real
+        return _sum_inplace(der.real)
 
     def mean_squared_error_hess(self, basis, target_amplitudes, weightings):
         estimates = np.exp(self.machine.log_val(basis))
@@ -32,7 +44,7 @@ class SupervisedLearning():
         if self.machine.has_complex_parameters:
             hess_first_term = np.block([[hess_first_term, 1.j*hess_first_term],[1.j*hess_first_term,-hess_first_term]])
             hess_sec_term = np.block([[hess_sec_term, -1.j*hess_sec_term],[1.j*hess_sec_term, hess_sec_term]])
-        return (2 * (hess_first_term + hess_sec_term).real)
+        return _sum_inplace(2 * (hess_first_term + hess_sec_term).real)
 
     def log_overlap(self, basis, target_amplitudes, weightings):
         predictions = np.exp(self.machine.log_val(basis))
@@ -91,9 +103,9 @@ class QGPSLearning(SupervisedLearning):
         self.alpha_cutoff = 1.e8
 
     @staticmethod
-    @njit(parallel=True)
+    @njit()
     def kernel_mat_inner(epsilon, ref_site, confs, K, complex_par, Smap, Smap_inverse, sym_spin_flip_sign):
-        for i in prange(confs.shape[0]):
+        for i in range(confs.shape[0]):
             for x in range(epsilon.shape[1]):
                 for t in range(Smap.shape[0]): 
                     innerprod = 1.0
@@ -127,18 +139,23 @@ class QGPSLearning(SupervisedLearning):
         self.alpha_mat = alpha_mat
         self.active_elements = self.alpha_mat < self.alpha_cutoff
         self.KtK_alpha = self.KtK + np.diag(self.alpha_mat)
+        
         try:
-            self.L = sp.linalg.cholesky(self.KtK_alpha[np.ix_(self.active_elements, self.active_elements)], lower=True)
-            self.Sinv = sp.linalg.solve_triangular(self.L, np.eye(self.KtK_alpha.shape[0]), check_finite=False, lower=True)
-            weights = sp.linalg.cho_solve((self.L, True), self.y[self.active_elements])
+            L = sp.linalg.cholesky(self.KtK_alpha[np.ix_(self.active_elements, self.active_elements)], lower=True)
+            self.Sinv = sp.linalg.solve_triangular(L, np.eye(self.KtK_alpha.shape[0]), check_finite=False, lower=True)
+            weights = sp.linalg.cho_solve((L, True), self.y[self.active_elements])
             self.cholesky = True
         except:
             self.Sinv = np.linalg.inv(self.KtK_alpha[np.ix_(self.active_elements, self.active_elements)])
             weights = self.Sinv.dot(self.y[self.active_elements])
             self.cholesky = False
+            # if _rank == 0:
+            #     print("Warning! Cholesky failed.")
 
         if self.weights is None:
             self.weights = np.zeros(self.alpha_mat.shape[0], dtype=weights.dtype)
+        
+        # potentially distribute weights across processes
         self.weights[self.active_elements] = weights
 
     def setup_fit_noise_dep(self, confset, target_amplitudes, ref_site, noise_tilde, alpha_mat):
@@ -148,9 +165,8 @@ class QGPSLearning(SupervisedLearning):
         else:
             self.S_diag = 1/(np.log1p(self.noise_tilde/(abs(self.log_amps)**2)))
 
-        # parallelise this
-        self.KtK = np.dot(self.K.conj().T, np.dot(np.diag(self.S_diag), self.K))
-        self.y = self.K.conj().T.dot(self.S_diag * self.fit_data)
+        self.KtK = _sum_inplace(np.dot(self.K.conj().T, np.dot(np.diag(self.S_diag), self.K)))
+        self.y = _sum_inplace(self.K.conj().T.dot(self.S_diag * self.fit_data))
 
         self.setup_fit_alpha_dep(confset, target_amplitudes, ref_site, alpha_mat)
 
@@ -161,14 +177,14 @@ class QGPSLearning(SupervisedLearning):
         self.setup_fit_noise_dep(confset, target_amplitudes, ref_site, noise_tilde, alpha_mat)
 
     def log_marg_lik(self):
-        # parallelise
         log_lik = -(np.sum(np.log(2*np.pi*1/self.S_diag)))
+        log_lik -= np.dot(self.fit_data.conj(), self.S_diag * self.fit_data)
+        log_lik = _MPI_comm.allreduce(log_lik)
+
         if self.cholesky:
             log_lik += 2*np.sum(np.log(np.diag(self.Sinv)))
         else:
             log_lik += np.linalg.slogdet(self.Sinv)[1]
-        log_lik -= np.dot(self.fit_data.conj(), self.S_diag * self.fit_data)
-        #
 
         log_lik += np.sum(np.log(self.alpha_mat[self.active_elements]))
         weights = self.weights[self.active_elements]
@@ -179,7 +195,6 @@ class QGPSLearning(SupervisedLearning):
         del_S = 1/((abs(self.log_amps)**2) * (1 + self.noise_tilde/(abs(self.log_amps)**2)))
         Delta_S = - (self.S_diag**2 * del_S)
 
-        # parallelise
         derivative_noise = -np.sum(self.S_diag * del_S)
 
         K = self.K[:,self.active_elements]
@@ -193,6 +208,8 @@ class QGPSLearning(SupervisedLearning):
         derivative_noise -= self.fit_data.conj().dot(Delta_S*self.fit_data)
         derivative_noise -= weights.conj().dot(K.conj().T.dot(Delta_S*K.dot(weights)))
         derivative_noise += 2*self.fit_data.conj().dot(Delta_S*K.dot(weights))
+
+        derivative_noise = _MPI_comm.allreduce(derivative_noise)
 
         return 0.5*derivative_noise.real
     
