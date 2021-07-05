@@ -15,7 +15,7 @@ J2 = 0.5
 
 rank = mpi.COMM_WORLD.Get_rank()
 
-initial_folder = "/home/mmm0475/Scratch/J1_J2_2D_10_by_10_J2_0.5_sum_sym_N_32_large_sample_with_bias_continue2_355383"
+initial_folder = "/home/mmm0475/Scratch/J1_J2_2D_10_by_10_J2_0.5_sum_sym_N_32_large_sample_with_bias_continue3_359374/out.txt"
 
 if rank == 0:
     for item in os.listdir(initial_folder):
