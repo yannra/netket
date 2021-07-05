@@ -225,75 +225,54 @@ class QGPSLearning(SupervisedLearning):
         derivative_alpha -= (self.weights.conj() * self.weights).real
 
         return 0.5*derivative_alpha.real
+    
+    def opt_alpha(self, confset, target_amplitudes, iterations=5, rvm=True):
+        for i in range(iterations):
+            if self.cholesky:
+                gamma = (1 - (self.alpha_mat[self.ref_site, self.active_elements])*np.sum(abs(self.Sinv) ** 2, 0))
+            else:
+                gamma = (1 - (self.alpha_mat[self.ref_site, self.active_elements])*np.diag(self.Sinv).real)
+            if rvm:
+                self.alpha_mat[self.ref_site, self.active_elements] = (gamma/((self.weights.conj()*self.weights)[self.active_elements])).real
+            else:
+                self.alpha_mat[self.ref_site, :] = ((np.sum(gamma)/(self.weights.conj().dot(self.weights))).real)
+            self.setup_fit_alpha_dep(confset, target_amplitudes)
 
-    def fit_step(self, confset, target_amplitudes, ref_site, noise_range=(1.e-10, 1.e5), alpha_range=(1.e-10, 1.e7),
-                 opt_alpha=True, opt_noise=True, max_iterations=10, rvm=False):
+
+    def fit_step(self, confset, target_amplitudes, ref_site, noise_range=(1.e-10, 1.e5),
+                 opt_alpha=True, opt_noise=True, alpha_iterations=5, noise_iterations=1, rvm=False):
         self.setup_fit(confset, target_amplitudes, ref_site)
         if opt_noise:
+            alpha_init = self.alpha_mat.copy()
             def ML(x):
+                self.noise_tilde = np.exp(x)
                 if opt_alpha:
-                    if rvm:
-                        self.alpha_mat[self.ref_site, :] = np.exp(x[1:])
-                    else:
-                        self.alpha_mat[self.ref_site, :] = np.exp(x[1])
-                self.noise_tilde = np.exp(x[0])
+                    np.copyto(self.alpha_mat, alpha_init)
                 self.setup_fit_noise_dep(confset, target_amplitudes)
+                if opt_alpha:
+                    self.opt_alpha(confset, target_amplitudes, iterations=alpha_iterations, rvm=rvm)
                 return -self.log_marg_lik()
 
             def derivative(x):
+                self.noise_tilde = np.exp(x)
                 if opt_alpha:
-                    if rvm:
-                        self.alpha_mat[self.ref_site, :] = np.exp(x[1:])
-                    else:
-                        self.alpha_mat[self.ref_site, :] = np.exp(x[1])
-                self.noise_tilde = np.exp(x[0])
+                    np.copyto(self.alpha_mat, alpha_init)
                 self.setup_fit_noise_dep(confset, target_amplitudes)
-                der_noise = self.log_marg_lik_noise_der()
                 if opt_alpha:
-                    der_alpha = self.log_marg_lik_alpha_der()
-                    if rvm:
-                        return np.concatenate((np.array([-der_noise]), -der_alpha))*np.exp(x)
-                    else:
-                        return np.array([-der_noise, -np.sum(der_alpha)])*np.exp(x)
-                else:
-                    return - der_noise * np.exp(x)
+                    self.opt_alpha(confset, target_amplitudes, iterations=alpha_iterations, rvm=rvm)
+                der_noise = self.log_marg_lik_noise_der()
+                return - der_noise * np.exp(x)
             
             bounds = [(np.log(noise_range[0]), np.log(noise_range[1]))]
-            init = [np.log(self.noise_tilde)]
 
+            opt = sp.optimize.minimize(ML, np.log(self.noise_tilde), options={"maxiter" : noise_iterations}, jac=derivative, bounds=bounds)
+            self.noise_tilde = np.exp(opt.x)[0]
             if opt_alpha:
-                bounds.append((np.log(alpha_range[0]), np.log(alpha_range[1])))
-                init.append(np.log(self.alpha_mat[self.ref_site, 0]))
-                if rvm:
-                    for i in range(1, self.alpha_mat.shape[1]):
-                        bounds.append((np.log(alpha_range[0]), np.log(alpha_range[1])))
-                        init.append(np.log(self.alpha_mat[self.ref_site, i]))
-
-            opt = sp.optimize.minimize(ML, np.array(init), options={"maxiter" : max_iterations}, jac=derivative, bounds=bounds)
-            new_hyperpar = np.exp(opt.x)
-            
-            self.noise_tilde = new_hyperpar[0]
-
-            if opt_alpha:
-                if rvm:
-                    self.alpha_mat[self.ref_site, :] = new_hyperpar[1:]
-                else:
-                    self.alpha_mat[self.ref_site, :] = new_hyperpar[1]
-
+                np.copyto(self.alpha_mat, alpha_init)
             self.setup_fit_noise_dep(confset, target_amplitudes)
 
-        elif opt_alpha:
-            for i in range(max_iterations):
-                if self.cholesky:
-                    gamma = (1 - (self.alpha_mat[self.ref_site, self.active_elements])*np.sum(abs(self.Sinv) ** 2, 0))
-                else:
-                    gamma = (1 - (self.alpha_mat[self.ref_site, self.active_elements])*np.diag(self.Sinv).real)
-                if rvm:
-                    self.alpha_mat[self.ref_site, self.active_elements] = (gamma/((self.weights.conj()*self.weights)[self.active_elements])).real
-                else:
-                    self.alpha_mat[self.ref_site, :] = ((np.sum(gamma)/(self.weights.conj().dot(self.weights))).real)
-
-                self.setup_fit_alpha_dep(confset, target_amplitudes)
+        if opt_alpha:
+            self.opt_alpha(confset, target_amplitudes, iterations=alpha_iterations, rvm=rvm)
 
         self.machine._epsilon[ref_site, :, :] = self.weights.reshape(self.machine._epsilon.shape[1], 2)
         return
