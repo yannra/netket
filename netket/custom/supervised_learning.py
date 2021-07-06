@@ -141,7 +141,7 @@ class QGPSLearning(SupervisedLearning):
     def update_site_prod_fast(epsilon, ref_site, ref_site_old, confs, Smap, sym_spin_flip_sign, site_product):
         eps = np.finfo(np.double).eps
         for x in range(epsilon.shape[1]):
-            if abs(epsilon[ref_site, x, 0]) > 1.e4 * eps and abs(epsilon[ref_site, x, 0]) > 1.e4 * eps:
+            if abs(epsilon[ref_site, x, 0]) > 1.e4 * eps and abs(epsilon[ref_site, x, 1]) > 1.e4 * eps:
                 for i in range(confs.shape[0]):
                     for t in range(Smap.shape[0]):
                         if sym_spin_flip_sign[t] * confs[i, Smap[t,ref_site]] < 0:
