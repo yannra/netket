@@ -108,17 +108,6 @@ class QGPSLearning(SupervisedLearning):
         self.ref_site = None
         assert(init_alpha < self.alpha_cutoff)
 
-    def mean_squared_error(self, basis, target_amplitudes, weightings=None):
-        if self.ref_site is None:
-            self.ref_site = 0
-        self.set_kernel_mat(basis)
-        self.weights = self.machine._epsilon[self.ref_site, :, :].flatten()
-        pred = np.exp(self.K.dot(self.weights))
-        if weightings is not None:
-            return _MPI_comm.allreduce(np.sum(weightings * abs(pred - target_amplitudes)**2))
-        else:
-            return _MPI_comm.allreduce(np.sum(abs(pred - target_amplitudes)**2))
-
     @staticmethod
     @njit()
     def kernel_mat_inner(site_prod, ref_site, confs, Smap, sym_spin_flip_sign, K):
