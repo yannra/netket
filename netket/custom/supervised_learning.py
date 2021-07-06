@@ -103,40 +103,111 @@ class QGPSLearning(SupervisedLearning):
         self.noise_tilde = init_noise_tilde
         self.alpha_mat = np.ones((self.machine._epsilon.shape[0], 2*self.machine._epsilon.shape[1]))*init_alpha
         self.alpha_cutoff = 1.e8
+        self.site_prod = None
+        self.confs = None
+        self.ref_site = None
         assert(init_alpha < self.alpha_cutoff)
+
+    def mean_squared_error(self, basis, target_amplitudes, weightings=None):
+        if self.ref_site is None:
+            self.ref_site = 0
+        self.set_kernel_mat(basis)
+        self.weights = self.machine._epsilon[self.ref_site, :, :].flatten()
+        pred = np.exp(self.K.dot(self.weights))
+        if weightings is not None:
+            return _MPI_comm.allreduce(np.sum(weightings * abs(pred - target_amplitudes)**2))
+        else:
+            return _MPI_comm.allreduce(np.sum(abs(pred - target_amplitudes)**2))
 
     @staticmethod
     @njit()
-    def kernel_mat_inner(epsilon, ref_site, confs, K, complex_par, Smap, Smap_inverse, sym_spin_flip_sign):
+    def kernel_mat_inner(site_prod, ref_site, confs, Smap, sym_spin_flip_sign, K):
+        K.fill(0.0)
+        for i in range(site_prod.shape[0]):
+            for x in range(site_prod.shape[1]):
+                for t in range(site_prod.shape[2]): 
+                    if sym_spin_flip_sign[t] * confs[i, Smap[t, ref_site]] < 0.0:
+                        K[i, 2*x] += site_prod[i, x, t]
+                    else:
+                        K[i, 2*x+1] += site_prod[i, x, t]
+        return K
+
+    @staticmethod
+    @njit()
+    def compute_site_prod_fast(epsilon, ref_site, confs, Smap, sym_spin_flip_sign, site_product):
+        site_product.fill(1.0)
         for i in range(confs.shape[0]):
             for x in range(epsilon.shape[1]):
                 for t in range(Smap.shape[0]): 
-                    innerprod = 1.0
-                    if complex_par:
-                        innerprod = np.complex128(1.0)
                     for j in range(confs.shape[1]):
                         if j != ref_site:
                             if sym_spin_flip_sign[t] * confs[i, Smap[t,j]] < 0:
-                                innerprod *= epsilon[j, x, 0]
+                                site_product[i, x, t] *= epsilon[j, x, 0]
                             else:
-                                innerprod *= epsilon[j, x, 1]
-                    if sym_spin_flip_sign[t] * confs[i, Smap[t, ref_site]] < 0.0:
-                        K[i, 2*x] += innerprod
-                    else:
-                        K[i, 2*x+1] += innerprod
-        return K
+                                site_product[i, x, t] *= epsilon[j, x, 1]
+        return site_product
+    
+    @staticmethod
+    @njit()
+    def update_site_prod_fast(epsilon, ref_site, ref_site_old, confs, Smap, sym_spin_flip_sign, site_product):
+        eps = np.finfo(np.double).eps
+        for x in range(epsilon.shape[1]):
+            if abs(epsilon[ref_site, x, 0]) > 1.e4 * eps and abs(epsilon[ref_site, x, 0]) > 1.e4 * eps:
+                for i in range(confs.shape[0]):
+                    for t in range(Smap.shape[0]):
+                        if sym_spin_flip_sign[t] * confs[i, Smap[t,ref_site]] < 0:
+                            site_product[i, x, t] /= epsilon[ref_site, x, 0]
+                        else:
+                            site_product[i, x, t] /= epsilon[ref_site, x, 1]
+
+                        if sym_spin_flip_sign[t] * confs[i, Smap[t,ref_site_old]] < 0:
+                            site_product[i, x, t] *= epsilon[ref_site_old, x, 0]
+                        else:
+                            site_product[i, x, t] *= epsilon[ref_site_old, x, 1]
+            else:
+                for i in range(confs.shape[0]):
+                    for t in range(Smap.shape[0]):
+                        site_product[i, x, t] = 1.0
+                        for j in range(confs.shape[1]):
+                            if j != ref_site:
+                                if sym_spin_flip_sign[t] * confs[i, Smap[t,j]] < 0:
+                                    site_product[i, x, t] *= epsilon[j, x, 0]
+                                else:
+                                    site_product[i, x, t] *= epsilon[j, x, 1]
+
+        return site_product
+
+    def compute_site_prod(self):
+        if self.site_prod is None:
+            self.site_prod = np.zeros((self.confs.shape[0], self.machine._epsilon.shape[1], self.machine._Smap.shape[0]), dtype=self.machine._epsilon.dtype)
+        self.site_prod = self.compute_site_prod_fast(self.machine._epsilon, self.ref_site, self.confs, self.machine._Smap,
+                                                     self.machine._sym_spin_flip_sign, self.site_prod)
+        self.site_prod_ref_site = self.ref_site
+
+    def update_site_prod(self):
+        if self.site_prod_ref_site != self.ref_site:
+            self.site_prod = self.update_site_prod_fast(self.machine._epsilon, self.ref_site, self.site_prod_ref_site, self.confs, self.machine._Smap,
+                                                        self.machine._sym_spin_flip_sign, self.site_prod)
+        self.site_prod_ref_site = self.ref_site
+    
 
     def set_kernel_mat(self, confs):
+        if self.site_prod is None or self.confs is None or np.sum(self.confs != confs) != 0:
+            self.confs = confs
+            self.compute_site_prod()
+
+        elif self.ref_site != self.site_prod_ref_site:
+            self.update_site_prod()
+
         if self.K is None:
             self.K = np.zeros((confs.shape[0], self.machine._epsilon.shape[1] * 2), dtype=self.machine._epsilon.dtype)
-        else:
-            self.K.fill(0.0)
-        if self.K.dtype == complex:
-            complex_par = True
-        else:
-            complex_par = False
-        self.K = self.kernel_mat_inner(self.machine._epsilon, self.ref_site, confs, self.K, complex_par, self.machine._Smap, self.machine._Smap_inverse, self.machine._sym_spin_flip_sign)
+
+        self.K = self.kernel_mat_inner(self.site_prod, self.ref_site, self.confs, self.machine._Smap,
+                                       self.machine._sym_spin_flip_sign, self.K)
         return self.K
+
+    def reset(self):
+        self.site_prod = None
 
     def setup_fit_alpha_dep(self, confset, target_amplitudes):
         self.active_elements = self.alpha_mat[self.ref_site,:] < self.alpha_cutoff
