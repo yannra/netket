@@ -8,5 +8,5 @@ from .stabilised_lin_method import LinMethodStab
 from .sweep_opt import SweepOpt, SweepOptLinMethod, SweepOptStabSR, SweepOptStabLinMethod
 from .randomsampler import RandomSampler
 from .timeevolvedstate import TimeEvolvedState
-from .supervised_learning import SupervisedLearning, QGPSLearning
+from .supervised_learning import SupervisedLearning, QGPSLearning, QGPSLearningExp, QGPSLearningLin
 from .utils import *
