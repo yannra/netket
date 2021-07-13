@@ -278,7 +278,7 @@ class QGPSLearningExp(QGPSLearning):
             return _MPI_comm.allreduce(np.sum(np.log(target_amplitudes)*weightings))/_MPI_comm.allreduce(np.sum(weightings))
 
     def predict(self, confset):
-        self.set_up_prediction(confset)        
+        self.set_up_prediction(confset)
         return np.exp(self.K.dot((self.machine._epsilon[self.ref_site, self.bond_min_id:self.bond_max_id, :]).flatten()))
 
     def setup_fit_noise_dep(self, confset, target_amplitudes):
@@ -355,7 +355,7 @@ class QGPSLearningExp(QGPSLearning):
         if opt_noise:
             alpha_init = self.alpha_mat.copy()
             def ML(x):
-                self.noise_tilde = np.exp(x)
+                self.noise_tilde = np.exp(x[0])
                 if opt_alpha:
                     np.copyto(self.alpha_mat, alpha_init)
                 self.setup_fit_noise_dep(confset, target_amplitudes)
@@ -364,7 +364,7 @@ class QGPSLearningExp(QGPSLearning):
                 return -self.log_marg_lik()
 
             def derivative(x):
-                self.noise_tilde = np.exp(x)
+                self.noise_tilde = np.exp(x[0])
                 if opt_alpha:
                     np.copyto(self.alpha_mat, alpha_init)
                 self.setup_fit_noise_dep(confset, target_amplitudes)
