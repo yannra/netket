@@ -85,8 +85,8 @@ for k in range(4000):
     trn_amplitudes /= scale_factor
     test_amplitudes /= scale_factor
     j = 0
-    init_error_trn = learninglin.mean_squared_error(trn_basis, trn_amplitudes, trn_weightings)/np.sum(trn_weightings)
-    init_error_test = learninglin.mean_squared_error(test_basis, test_amplitudes, test_weightings)/np.sum(test_weightings)
+    init_error_trn = learninglin.mean_squared_error(trn_basis, trn_amplitudes, trn_weightings)/(_n_nodes * len(trn_amplitudes))
+    init_error_test = learninglin.mean_squared_error(test_basis, test_amplitudes, test_weightings)/(_n_nodes * len(test_amplitudes))
     if _rank == 0:
         print("Init error", init_error_trn, init_error_test, flush=True)
     log_ml = 1.0
