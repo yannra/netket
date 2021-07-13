@@ -13,7 +13,12 @@ from netket.utils import (
 from netket.operator import local_values as _local_values
 
 # 1D Lattice
-L = 40
+L = 20
+
+
+if _rank == 0:
+    with open("out.txt", "w") as fl:
+        fl.write("")
 
 
 g = nk.graph.Hypercube(length=L, n_dim=1, pbc=True)
@@ -26,10 +31,14 @@ ha = nk.custom.J1J2(g, J2=J2, msr=False)
 hi = ha.hilbert
 
 transl = nk.custom.get_symms_chain(L, point_group=True)
-ma = nk.machine.QGPSProdSym(hi, n_bond=5, automorphisms=transl, spin_flip_sym=True, cluster_ids=None, dtype=complex)
-
+ma = nk.machine.QGPSLinExp(hi, n_bond_lin=1, n_bond_exp=1, automorphisms=transl, spin_flip_sym=True, cluster_ids=None, dtype=complex)
 ma._exp_kern_representation = False
 ma._fast_update = False
+ma.init_random_parameters(sigma=3.0, start_from_uniform=False, small_arg=False)
+
+ma._epsilon[0, ma._n_bond_lin:,:] = 0.0
+ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
+
 
 t_state = nk.custom.TimeEvolvedState(ma, ha, beta=0.1, order=1)
 t_state2 = nk.custom.TimeEvolvedState(t_state, ha, beta=0.1, order=1)
@@ -38,72 +47,82 @@ sa0 = nk.sampler.MetropolisExchange(ma,graph=g,d_max=L,n_chains=1)
 sa_evolved = nk.sampler.MetropolisExchange(t_state2,graph=g,d_max=L,n_chains=1)
 final_sampler = nk.custom.RandomSampler(t_state2, n_chains=1)
 
-ma.init_random_parameters(sigma=0.1, start_from_uniform=False, small_arg=True)
-
-alpha_guess = 1.0
-noise_guess = 1.e-1
-
-alph = np.ones((L, 2*ma._epsilon.shape[1]))*alpha_guess
-noi = np.ones(L)*noise_guess
 
 exp_lsq = []
 exp_tst_lsq = []
 
 en_fit = []
 
-learning = nk.custom.QGPSLearning(ma)
+learninglin = nk.custom.QGPSLearningLin(ma)
+learningexp = nk.custom.QGPSLearningExp(ma)
 
+learninglin.noise = 0.00001
+
+learningexp.noise_tilde = 0.001
+
+alpha_guess = 1.0
 
 for k in range(4000):
-    en_fit.append(nk.variational.estimate_expectations(ha, sa0, 50).mean.real)
+    # ma._fast_update = True
+    ma.reset()
+    current_en = nk.variational.estimate_expectations(ha, sa0, 50)
+    en_fit.append(current_en.mean.real)
     if _rank == 0:
         print("Current En:", en_fit[-1])
+        with open("out.txt", "a") as fl:
+            fl.write("{}  {}  {}\n".format(np.real(current_en.mean), np.imag(current_en.mean), current_en.error_of_mean))
     en = nk.variational.estimate_expectations(ha, sa_evolved, 50).mean.real
     if _rank == 0:
         print("Target En:", en)
-    trn_basis = final_sampler.generate_samples(200).reshape(200, L)
+    trn_basis = final_sampler.generate_samples(2000).reshape(2000, L)
+    test_basis = final_sampler.generate_samples(50).reshape(50, L)
     trn_amplitudes = np.exp(t_state2.log_val(trn_basis))
+    test_amplitudes = np.exp(t_state2.log_val(test_basis))
+    # ma._fast_update = False
     trn_weightings = np.ones(trn_amplitudes.size)
-    scale_factor = np.exp(learning.get_bias(trn_amplitudes, weightings=trn_weightings))
+    test_weightings = np.ones(test_amplitudes.size)
+    scale_factor = np.exp(learningexp.get_bias(trn_amplitudes, weightings=trn_weightings))
     trn_amplitudes /= scale_factor
+    test_amplitudes /= scale_factor
     j = 0
-    init_error = learning.mean_squared_error(trn_basis, trn_amplitudes, trn_weightings)/np.sum(trn_weightings)
+    init_error_trn = learninglin.mean_squared_error(trn_basis, trn_amplitudes, trn_weightings)/np.sum(trn_weightings)
+    init_error_test = learninglin.mean_squared_error(test_basis, test_amplitudes, test_weightings)/np.sum(test_weightings)
     if _rank == 0:
-        print("Init error", init_error, noi[0], np.sum(alph), np.sum(alph.flatten()>1.e6), en_fit[-1].real, flush=True)
-    while((learning.mean_squared_error(trn_basis, trn_amplitudes, trn_weightings)/np.sum(trn_weightings) > 0.1 or j < 1) and j < 25):
+        print("Init error", init_error_trn, init_error_test, flush=True)
+    log_ml = 1.0
+    log_ml_old = 1.0
+    # while ((log_ml - log_ml_old)/np.sqrt(abs(log_ml*log_ml_old)) > 1.e-3 or j < 2):
+    while j < 10:
+        log_ml_old = log_ml
+        log_ml = 0.0
         for i in range(L):
-            learning.fit_step(trn_basis, trn_amplitudes, i, noise_tilde=noi, alpha=alph, opt_alpha=True, opt_noise=False, rvm=True, max_iterations=5)
+            learninglin.fit_step(trn_basis, trn_amplitudes, i, opt_alpha=True, opt_noise=True, rvm=True, multiplication=learningexp.predict(trn_basis))
+            log_ml += learninglin.log_marg_lik()
+            learninglin.alpha_mat[i, ~learninglin.active_elements] = 1000 * alpha_guess
+            learningexp.fit_step(trn_basis, trn_amplitudes, i, opt_alpha=True, opt_noise=True, rvm=True, multiplication=learninglin.predict(trn_basis))
+            log_ml += learningexp.log_marg_lik()
+            learningexp.alpha_mat[i, ~learningexp.active_elements] = 1000 * alpha_guess
             N = ma._epsilon.shape[1]
-            for n in range(N):
+            for n in range(ma._epsilon.shape[1]):
                 if np.sum(np.abs(ma._epsilon[i, n, :])) < 1.e-8:
                     if _rank == 0:
-                        print("triggered")
-                    ma._epsilon[i, n, :] = np.random.normal(loc=1.0, scale=0.01, size=2) + 1.j * np.random.normal(scale=0.01, size=2)
-                    alph[i, 2 * n] = alpha_guess
-                    alph[i, 2 * n + 1] = alpha_guess
+                        if n < ma._n_bond_lin:
+                            print("triggered lin")
+                        else:
+                            print("triggered exp")
+                    ma._epsilon[i, n, :] = np.random.normal(loc=1.0, scale=3.0, size=2) + 1.j * np.random.normal(scale=0.01, size=2)
+                    if n < ma._n_bond_lin:
+                        learninglin.alpha_mat[i, 2 * n] = alpha_guess
+                        learninglin.alpha_mat[i, 2 * n + 1] = alpha_guess
+                    else:
+                        n_id = n % ma._n_bond_lin
+                        learningexp.alpha_mat[i, 2 * n_id] = alpha_guess
+                        learningexp.alpha_mat[i, 2 * n_id + 1] = alpha_guess
             _MPI_comm.Bcast(ma._epsilon, root=0)
-            ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
-            noi.fill(noi[i])
-        trn_error = learning.mean_squared_error(trn_basis, trn_amplitudes, trn_weightings)/np.sum(trn_weightings)
+        trn_error = learninglin.mean_squared_error(trn_basis, trn_amplitudes, trn_weightings)/(_n_nodes * len(trn_amplitudes))
+        test_error = learninglin.mean_squared_error(test_basis, test_amplitudes, test_weightings)/(_n_nodes * len(test_amplitudes))
         if _rank == 0:
-            print("A", trn_error, noi[0], np.sum(alph), np.sum(alph.flatten()>1.e6), en_fit[-1].real, flush=True)
-        alph.fill(alpha_guess)
+            print(trn_error, test_error, (log_ml), (log_ml - log_ml_old)/np.sqrt(abs(log_ml*log_ml_old)), learninglin.noise, learningexp.noise_tilde, en_fit[-1].real, flush=True)
         j += 1
-    for i in range(L):
-        learning.fit_step(trn_basis, trn_amplitudes, i, noise_tilde=noi, alpha=alph, opt_alpha=True, opt_noise=True, rvm=True, max_iterations=10)
-        N = ma._epsilon.shape[1]
-        for n in range(N):
-            if np.sum(np.abs(ma._epsilon[i, n, :])) < 1.e-8:
-                if _rank == 0:
-                    print("triggered")
-                ma._epsilon[i, n, :] = np.random.normal(loc=1.0, scale=0.01, size=2) + 1.j * np.random.normal(scale=0.01, size=2)
-                alph[i, 2 * n] = alpha_guess
-                alph[i, 2 * n + 1] = alpha_guess
         ma._opt_params = ma._epsilon[ma._der_ids >= 0].copy()
-        noi.fill(noi[i])
-    trn_error = learning.mean_squared_error(trn_basis, trn_amplitudes, trn_weightings)/np.sum(trn_weightings)
-    if _rank == 0:
-        print("B", trn_error, noi[0], np.sum(alph), np.sum(alph.flatten()>1.e6), en_fit[-1].real, flush=True)
-    alph.fill(alpha_guess)
-    j += 1
-    print(np.sum(ma._epsilon), np.sum(learning.K))
+
