@@ -257,7 +257,7 @@ class QGPSLearning(SupervisedLearning):
     def squared_error(self, confset, target_amplitudes, weightings = None):
         errors = abs(self.predict(confset) - target_amplitudes)**2
         if weightings is not None:
-            errors *= weightings * errors
+            errors *= weightings
         return _MPI_comm.allreduce(np.sum(errors))
 
 
