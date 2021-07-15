@@ -295,7 +295,10 @@ class QGPSLearningExp(QGPSLearning):
     def setup_fit(self, confset, target_amplitudes, ref_site, multiplication=None):
         self.ref_site = ref_site
         self.exp_amps = target_amplitudes.astype(self.machine._epsilon.dtype)
-        self.fit_data = np.log(self.exp_amps/multiplication)
+        if multiplication is not None:
+            self.fit_data = np.log(self.exp_amps/multiplication)
+        else:
+            self.fit_data = np.log(self.exp_amps)
         self.set_kernel_mat(confset)
         self.setup_fit_noise_dep(confset, target_amplitudes)
 
