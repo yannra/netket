@@ -121,9 +121,6 @@ class TimeEvolvedState(machine.AbstractMachine):
 
         return E
 
-        
-
-
     @staticmethod
     @jit(nopython=True)
     def contract_inner_sum(vals, sections, arg):
