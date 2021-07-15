@@ -2,6 +2,17 @@ import netket.machine as machine
 import numpy as np
 from numba import jit
 
+from netket.utils import (
+    MPI_comm as _MPI_comm,
+    n_nodes as _n_nodes,
+    node_number as _rank
+)
+
+from netket.stats import (
+    statistics as _statistics,
+    mean as _mean,
+    sum_inplace as _sum_inplace,
+)
 
 class TimeEvolvedState(machine.AbstractMachine):
     def __init__(self, machine, hamiltonian, beta=1., order=1):
@@ -54,6 +65,64 @@ class TimeEvolvedState(machine.AbstractMachine):
 
     def der_log(self, x, out=None):
         return out
+
+    def get_h_vals(self, samples):
+        log_vals = self.machine.log_val(samples)
+
+        sections = np.empty(samples.shape[0], dtype=np.int32)
+        v_primes, mels = self.ha.get_conn_flattened(np.asarray(samples), sections)
+
+        sections2 = np.empty(v_primes.shape[0], dtype=np.int32)
+        v_primes2, mels2 = self.ha.get_conn_flattened(v_primes, sections2)
+
+        log_val_primes = self.machine.log_val(v_primes)
+        log_val_primes2 = self.machine.log_val(v_primes2)
+
+        arg = np.ones(log_val_primes.size, dtype=np.complex128)
+        arg = self.contract_inner_sum((np.exp(log_val_primes2)*mels2), sections2, arg)
+
+        h2_exp = np.ones(samples.shape[0], dtype=np.complex128)
+        h2_exp = self.contract_inner_sum((arg * mels), sections, h2_exp)
+
+        h_exp = np.ones(samples.shape[0], dtype=np.complex128)
+        h_exp = self.contract_inner_sum((np.exp(log_val_primes)*mels), sections, h_exp)
+
+        h2_exp /= np.exp(log_vals)
+        h_exp /= np.exp(log_vals)
+
+        h1 = _mean(h_exp.conj())
+        h2a = _mean(h_exp.conj() * h_exp)
+        h2b = _mean(h2_exp.conj())
+        h3 = _mean(h_exp.conj()*h2_exp)
+
+        return (h1, h2a, h2b, h3)
+
+    def estimate_energy(self, samples):
+        assert(self.order == 1)
+        h1, h2a, h2b, h3 = self.get_h_vals(samples)
+
+        E = h1 - self.beta *(h2a + h2b) + self.beta**2 * h3
+        E /= (1 - self.beta * h1 + self.beta**2 * h2a) 
+
+        return E
+
+    def estimate_beta(self, samples):
+        assert(self.order == 1)
+        h1, h2a, h2b, h3 = self.get_h_vals(samples)
+
+        A = (2*h3 - h2b*(h2a+h2b))
+        B = (2*h3 - 2 * h1 * h2a)
+        C = (h2a+h2b - 2 * h1)
+
+        self.beta = -np.roots([A.real, B.real, C.real]).min()
+
+        E = h1 - self.beta *(h2a + h2b) + self.beta**2 * h3
+        E /= (1 - self.beta * h1 + self.beta**2 * h2a) 
+
+        return E
+
+        
+
 
     @staticmethod
     @jit(nopython=True)
