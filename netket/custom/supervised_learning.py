@@ -196,11 +196,13 @@ class QGPSLearning(SupervisedLearning):
         if self.site_prod is None or self.confs is None or np.sum(self.confs != confs) != 0:
             self.confs = confs
             self.compute_site_prod()
-            if self.K is None:
-                self.K = np.zeros((confs.shape[0], self.n_bond * 2), dtype=self.machine._epsilon.dtype)
             update_K = True
         elif self.ref_site != self.site_prod_ref_site:
             self.update_site_prod()
+            update_K = True
+
+        if self.K is None:
+            self.K = np.zeros((confs.shape[0], self.n_bond * 2), dtype=self.machine._epsilon.dtype)
             update_K = True
         
         if update_K:
@@ -214,6 +216,7 @@ class QGPSLearning(SupervisedLearning):
 
     def reset(self):
         self.site_prod = None
+        self.K = None
 
     def setup_fit_alpha_dep(self, confset, target_amplitudes):
         self.active_elements = self.alpha_mat[self.ref_site,:] < self.alpha_cutoff
@@ -295,10 +298,16 @@ class QGPSLearningExp(QGPSLearning):
     def setup_fit(self, confset, target_amplitudes, ref_site, multiplication=None):
         self.ref_site = ref_site
         self.exp_amps = target_amplitudes.astype(self.machine._epsilon.dtype)
-        if multiplication is not None:
-            self.fit_data = np.log(self.exp_amps/multiplication)
+        if self.machine._epsilon.dtype == float:
+            if multiplication is not None:
+                self.fit_data = np.log(abs(self.exp_amps/multiplication))
+            else:
+                self.fit_data = np.log(abs(self.exp_amps))
         else:
-            self.fit_data = np.log(self.exp_amps)
+            if multiplication is not None:
+                self.fit_data = np.log(self.exp_amps/multiplication)
+            else:
+                self.fit_data = np.log(self.exp_amps)
         self.set_kernel_mat(confset)
         self.setup_fit_noise_dep(confset, target_amplitudes)
 
